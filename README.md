@@ -11,7 +11,7 @@
 ![Tests: 10 Passed](https://img.shields.io/badge/tests-10%20passed-brightgreen.svg)
 ![Bandit SAST](https://img.shields.io/badge/bandit-0%20high%20findings-success.svg)
 ![OWASP Top 10](https://img.shields.io/badge/OWASP-A01%20%7C%20A03%20%7C%20A07-orange.svg)
-![License: Educational](https://img.shields.io/badge/license-Educational%20Use%20Only-red.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Threat Model](docs/threat_model.md) • [Vulnerability Catalog](docs/vulnerabilities.md) • [Security Assessment](docs/security_report.md) • [Regression Tests](tests/test_security.py) • [CI Pipeline](.github/workflows/security-ci.yml)
 
@@ -243,5 +243,5 @@ Every pull request and push to `main` triggers the automated GitHub Actions work
 ---
 
 <div align="center">
-<sub>Crafted for the "Trust Issues" Cybersecurity Benchmark Lab • MIT / Educational Use</sub>
+<sub>Released under the <a href="LICENSE">MIT License</a>.</sub>
 </div>
