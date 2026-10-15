@@ -110,34 +110,37 @@ def test_account_lockout_after_five_failed_attempts(client, app):
     Subsequent attempts (even with valid credentials) must remain locked during the lockout window.
     """
     target_user = "bob"
-    # Attempts 1 to 4 should report invalid credentials
-    for i in range(1, 5):
-        resp = client.post("/login", data={"username": target_user, "password": f"wrong_{i}"})
+    attacker_ip = "192.168.1.5"
+    for i in range(1, 6):
+        resp = client.post(
+            "/login",
+            data={"username": target_user, "password": f"wrong_{i}"},
+            environ_overrides={"REMOTE_ADDR": attacker_ip}
+        )
         assert resp.status_code == 200
         assert b"Invalid credentials" in resp.data
 
-    # Attempt 5 reaches the threshold: triggers account lockout
-    resp_lock = client.post(
-        "/login",
-        data={"username": target_user, "password": "wrong_5"},
-        environ_overrides={"REMOTE_ADDR": "192.168.1.5"}
-    )
-    assert resp_lock.status_code == 200
-    assert b"Invalid credentials" in resp_lock.data
-
-    # Verify in DB that account is marked locked
+    # Verify in DB that (username, IP) is marked locked
     with app.app_context():
         from secure.db import get_db
         db = get_db()
-        user_row = db.execute("SELECT * FROM users WHERE username = ?", (target_user,)).fetchone()
-        assert user_row["locked_until"] is not None
-        assert user_row["failed_attempts"] >= 5
+        attempt_row = db.execute(
+            "SELECT * FROM login_attempts WHERE username = ? AND ip_address = ?",
+            (target_user, attacker_ip)
+        ).fetchone()
+        assert attempt_row is not None
+        assert attempt_row["locked_until"] is not None
+        assert attempt_row["failed_attempts"] >= 5
 
-    # Attempt with correct password while locked is rejected with identical status and message
+    # Reset IP rate limiter to test lockout layer without rate limiter collision
+    from secure.app import limiter
+    limiter.reset()
+
+    # Attempt with correct password from locked IP is rejected
     resp_blocked = client.post(
         "/login",
         data={"username": target_user, "password": "bobpw"},
-        environ_overrides={"REMOTE_ADDR": "192.168.1.100"}
+        environ_overrides={"REMOTE_ADDR": attacker_ip}
     )
     assert resp_blocked.status_code == 200
     assert b"Invalid credentials" in resp_blocked.data
@@ -279,25 +282,33 @@ def test_lockout_expiry_resets_failed_attempts(client, monkeypatch, app):
     import secure.app
 
     target_user = "bob"
-    # 5 failed attempts trigger lockout
+    target_ip = "192.168.5.5"
+    # 5 failed attempts trigger lockout for (target_user, target_ip)
     for i in range(1, 6):
         client.post(
             "/login",
             data={"username": target_user, "password": f"wrong_{i}"},
-            environ_overrides={"REMOTE_ADDR": f"192.168.1.{i}"}
+            environ_overrides={"REMOTE_ADDR": target_ip}
         )
 
     # Verify locked in DB
     with app.app_context():
         from secure.db import get_db
         db = get_db()
-        user_row = db.execute("SELECT * FROM users WHERE username = ?", (target_user,)).fetchone()
-        assert user_row["locked_until"] is not None
+        attempt_row = db.execute(
+            "SELECT * FROM login_attempts WHERE username = ? AND ip_address = ?",
+            (target_user, target_ip)
+        ).fetchone()
+        assert attempt_row is not None
+        assert attempt_row["locked_until"] is not None
+
+    from secure.app import limiter
+    limiter.reset()
 
     resp_locked = client.post(
         "/login",
         data={"username": target_user, "password": "wrong"},
-        environ_overrides={"REMOTE_ADDR": "192.168.1.100"}
+        environ_overrides={"REMOTE_ADDR": target_ip}
     )
     assert resp_locked.status_code == 200
     assert b"Invalid credentials" in resp_locked.data
@@ -315,12 +326,13 @@ def test_lockout_expiry_resets_failed_attempts(client, monkeypatch, app):
             return dt.fromisoformat(s)
 
     monkeypatch.setattr(secure.app, "datetime", MockDatetime)
+    limiter.reset()
 
-    # First attempt with wrong password after expiry: must report 'Invalid credentials', not 'Account locked'
+    # First attempt with wrong password after expiry: must report 'Invalid credentials'
     resp_after_expiry = client.post(
         "/login",
         data={"username": target_user, "password": "wrong_after_expiry"},
-        environ_overrides={"REMOTE_ADDR": "192.168.1.101"}
+        environ_overrides={"REMOTE_ADDR": target_ip}
     )
     assert resp_after_expiry.status_code == 200
     assert b"Invalid credentials" in resp_after_expiry.data
@@ -350,3 +362,45 @@ def test_anti_enumeration_identical_responses_and_dummy_hash(client):
     assert resp_wrong_pw.status_code == 200
     assert resp_unknown.data == resp_wrong_pw.data
     assert b"Invalid credentials" in resp_unknown.data
+
+
+def test_lockout_dos_resistance_different_ip_can_login(client, app):
+    """
+    DoS Resistance:
+    An attacker at IP A submitting 5 failed attempts locks (username, IP A),
+    but a legitimate user from IP B can still log in with the correct password.
+    """
+    target_user = "alice"
+    attacker_ip = "198.51.100.1"
+    legit_ip = "203.0.113.5"
+
+    # Attacker exhausts 5 failed attempts from attacker_ip
+    for i in range(1, 6):
+        client.post(
+            "/login",
+            data={"username": target_user, "password": f"guess_{i}"},
+            environ_overrides={"REMOTE_ADDR": attacker_ip}
+        )
+
+    # Attacker IP is locked
+    with app.app_context():
+        from secure.db import get_db
+        db = get_db()
+        row = db.execute(
+            "SELECT * FROM login_attempts WHERE username = ? AND ip_address = ?",
+            (target_user, attacker_ip)
+        ).fetchone()
+        assert row is not None
+        assert row["locked_until"] is not None
+
+    # Legitimate user from legit_ip logs in successfully
+    resp = client.post(
+        "/login",
+        data={"username": target_user, "password": "alicepw"},
+        environ_overrides={"REMOTE_ADDR": legit_ip},
+        follow_redirects=True
+    )
+    assert resp.status_code == 200
+    assert b"Club Dashboard" in resp.data
+    with client.session_transaction() as sess:
+        assert sess.get("user_id") == 2

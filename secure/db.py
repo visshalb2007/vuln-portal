@@ -36,6 +36,16 @@ def ensure_schema(db):
         db.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0")
     if cols and "locked_until" not in cols:
         db.execute("ALTER TABLE users ADD COLUMN locked_until TEXT")
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        failed_attempts INTEGER DEFAULT 0,
+        locked_until TEXT,
+        UNIQUE(username, ip_address)
+    );
+    """)
     db.commit()
 
 
@@ -79,6 +89,7 @@ def init_db(db_path=None):
     db = connect_db(db_path)
     db.executescript("""
     DROP TABLE IF EXISTS events;
+    DROP TABLE IF EXISTS login_attempts;
     DROP TABLE IF EXISTS users;
     CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,6 +108,14 @@ def init_db(db_path=None):
         description TEXT,
         created_by INTEGER,
         FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE CASCADE
+    );
+    CREATE TABLE login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        failed_attempts INTEGER DEFAULT 0,
+        locked_until TEXT,
+        UNIQUE(username, ip_address)
     );
     """)
 

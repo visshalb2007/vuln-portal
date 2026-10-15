@@ -76,50 +76,71 @@ def create_app(config=None):
         if request.method == "POST":
             username = request.form["username"]
             password = request.form["password"]
+            ip_addr = request.remote_addr or "127.0.0.1"
             db = get_db()
             user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
+            attempt_row = db.execute(
+                "SELECT * FROM login_attempts WHERE username = ? AND ip_address = ?",
+                (username, ip_addr)
+            ).fetchone()
+
             is_locked = False
-            if user:
-                locked_until_str = user["locked_until"]
-                if locked_until_str:
-                    try:
-                        locked_until = datetime.fromisoformat(locked_until_str)
-                        if locked_until.tzinfo is None:
-                            locked_until = locked_until.replace(tzinfo=timezone.utc)
-                        if datetime.now(timezone.utc) < locked_until:
-                            is_locked = True
-                        else:
-                            db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],))
-                            db.commit()
-                            user = db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
-                    except (ValueError, TypeError):
-                        pass
+            if attempt_row and attempt_row["locked_until"]:
+                try:
+                    locked_until = datetime.fromisoformat(attempt_row["locked_until"])
+                    if locked_until.tzinfo is None:
+                        locked_until = locked_until.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) < locked_until:
+                        is_locked = True
+                    else:
+                        db.execute("UPDATE login_attempts SET failed_attempts = 0, locked_until = NULL WHERE id = ?",
+                                   (attempt_row["id"],))
+                        db.commit()
+                        attempt_row = db.execute("SELECT * FROM login_attempts WHERE id = ?",
+                                                 (attempt_row["id"],)).fetchone()
+                except (ValueError, TypeError):
+                    pass
 
             if user and not is_locked:
                 if check_password_hash(user["password"], password):
-                    db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],))
-                    db.commit()
+                    if attempt_row:
+                        db.execute("UPDATE login_attempts SET failed_attempts = 0, locked_until = NULL WHERE id = ?",
+                                   (attempt_row["id"],))
+                        db.commit()
                     session.clear()
                     session["user_id"] = user["id"]
                     session["role"] = user["role"]
                     return redirect(url_for("dashboard"))
                 else:
-                    failed = (user["failed_attempts"] or 0) + 1
+                    failed = ((attempt_row["failed_attempts"] if attempt_row else 0) or 0) + 1
                     if failed >= 5:
-                        lock_until = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
-                        db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?",
-                                   (failed, lock_until, user["id"]))
+                        backoff_mins = min(60, 5 * (2 ** (failed - 5)))
+                        lock_until = (datetime.now(timezone.utc) + timedelta(minutes=backoff_mins)).isoformat()
+                        if attempt_row:
+                            db.execute("UPDATE login_attempts SET failed_attempts = ?, locked_until = ? WHERE id = ?",
+                                       (failed, lock_until, attempt_row["id"]))
+                        else:
+                            db.execute(
+                                "INSERT INTO login_attempts (username, ip_address, failed_attempts, locked_until) "
+                                "VALUES (?, ?, ?, ?)",
+                                (username, ip_addr, failed, lock_until)
+                            )
                     else:
-                        db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", (failed, user["id"]))
+                        if attempt_row:
+                            db.execute("UPDATE login_attempts SET failed_attempts = ? WHERE id = ?",
+                                       (failed, attempt_row["id"]))
+                        else:
+                            db.execute(
+                                "INSERT INTO login_attempts (username, ip_address, failed_attempts) VALUES (?, ?, ?)",
+                                (username, ip_addr, failed)
+                            )
                     db.commit()
                     return render_template("login.html", error="Invalid credentials")
             elif user and is_locked:
-                # Timing equalization against locked accounts
                 check_password_hash(user["password"], password)
                 return render_template("login.html", error="Invalid credentials")
             else:
-                # Timing equalization against unknown usernames
                 check_password_hash(DUMMY_PASSWORD_HASH, password)
                 return render_template("login.html", error="Invalid credentials")
         return render_template("login.html")
