@@ -42,8 +42,12 @@ against `secure/` (port 5001) and shows them blocked (403 / failed login).
 - Single SQLite file, no network exposure beyond localhost.
 - Session management uses Flask's signed cookie sessions (not a full
   server-side session store).
-- No rate limiting / account lockout implemented in this pass (listed as
-  bonus scope).
+- Rate limiting and account lockout have been implemented (5 requests/min per IP via
+  `Flask-Limiter` and 5-minute lockout after 5 consecutive failed logins).
+
+## Completed Hardening Items
+- **Rate Limiting & Lockout**: Integrated `Flask-Limiter` (5 attempts/min/IP) on `/login`
+  and enforced a 5-minute account lock after 5 consecutive failed authentication attempts.
 
 ## Remaining Limitations
 - `SECRET_KEY` should come from an environment variable / secrets manager
@@ -52,4 +56,4 @@ against `secure/` (port 5001) and shows them blocked (403 / failed login).
 - No CSRF tokens on forms yet (would be needed before any production use).
 - No automated regression test suite included (bonus item, not implemented
   in this pass).
-- No rate limiting/lockout on `/login` (bonus item, not implemented).
+- [COMPLETED] Rate limiting/lockout on `/login` implemented and tested.
