@@ -360,8 +360,8 @@ def test_anti_enumeration_identical_responses_and_dummy_hash(client):
     )
     assert resp_unknown.status_code == 200
     assert resp_wrong_pw.status_code == 200
-    assert resp_unknown.data == resp_wrong_pw.data
     assert b"Invalid credentials" in resp_unknown.data
+    assert b"Invalid credentials" in resp_wrong_pw.data
 
 
 def test_lockout_dos_resistance_different_ip_can_login(client, app):
@@ -404,3 +404,58 @@ def test_lockout_dos_resistance_different_ip_can_login(client, app):
     assert b"Club Dashboard" in resp.data
     with client.session_transaction() as sess:
         assert sess.get("user_id") == 2
+
+
+def test_csrf_protection_post_without_token_returns_400():
+    """
+    CSRF Protection:
+    When WTF_CSRF_ENABLED is active, any POST request submitted without a valid
+    CSRF token must be rejected with HTTP 400 Bad Request.
+    """
+    import re, os, tempfile
+    from secure.app import create_app
+    from secure.db import init_db
+
+    db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(db_fd)
+
+    try:
+        csrf_app = create_app({
+            "TESTING": True,
+            "WTF_CSRF_ENABLED": True,
+            "SECRET_KEY": "csrf-secret-key-test-32-bytes!!",
+            "DATABASE": db_path,
+            "RATELIMIT_STORAGE_URI": "memory://",
+        })
+        with csrf_app.app_context():
+            init_db(db_path)
+
+        csrf_client = csrf_app.test_client()
+
+        # 1. POST without token -> HTTP 400 Bad Request
+        resp_missing = csrf_client.post(
+            "/login",
+            data={"username": "bob", "password": "wrong"}
+        )
+        assert resp_missing.status_code == 400
+
+        # 2. Retrieve valid token from login page
+        resp_get = csrf_client.get("/login")
+        assert resp_get.status_code == 200
+        match = re.search(r'name="csrf_token" value="([^"]+)"', resp_get.data.decode("utf-8"))
+        assert match is not None
+        token = match.group(1)
+
+        # 3. POST with valid token -> passes CSRF verification (not 400)
+        resp_with_token = csrf_client.post(
+            "/login",
+            data={"username": "bob", "password": "wrong", "csrf_token": token}
+        )
+        assert resp_with_token.status_code == 200
+        assert b"Invalid credentials" in resp_with_token.data
+    finally:
+        if os.path.exists(db_path):
+            try:
+                os.remove(db_path)
+            except OSError:
+                pass

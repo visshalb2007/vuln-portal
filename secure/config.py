@@ -8,6 +8,7 @@ class Config:
     DATABASE = os.environ.get("DATABASE", os.path.join(os.path.dirname(__file__), "club.db"))
     RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
     SEED_PASSWORDS = None
+    WTF_CSRF_ENABLED = True
 
     @classmethod
     def check_valid(cls, config_dict):
@@ -21,6 +22,7 @@ class TestingConfig(Config):
     SECRET_KEY = "test-secret-key-32-bytes-long!"
     DATABASE = os.path.join(os.path.dirname(__file__), "test_club.db")
     RATELIMIT_STORAGE_URI = "memory://"
+    WTF_CSRF_ENABLED = False
     SEED_PASSWORDS = {
         "admin": "admin123",
         "alice": "alicepw",

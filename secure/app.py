@@ -12,12 +12,14 @@ import sqlite3, os
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 
 from secure.config import Config, TestingConfig
 from secure.db import get_db, close_db, init_db, DB_FALLBACK as DB
 
 DUMMY_PASSWORD_HASH = generate_password_hash("timing_equalization_secret")
 
+csrf = CSRFProtect()
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[],
@@ -65,6 +67,7 @@ def create_app(config=None):
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
+    csrf.init_app(app)
     limiter.init_app(app)
     app.teardown_appcontext(close_db)
 
