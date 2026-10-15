@@ -1,5 +1,7 @@
 # College Club Portal — Trust Issues (Security Lab)
 
+![Security CI](https://github.com/visshalb2007/vuln-portal/actions/workflows/security-ci.yml/badge.svg)
+
 A small Flask app demonstrating 3 real vulnerabilities (`vulnerable/`) and
 their fixes (`secure/`), built for the "Trust Issues" cybersecurity task.
 
@@ -7,7 +9,7 @@ their fixes (`secure/`), built for the "Trust Issues" cybersecurity task.
 
 ## Setup
 ```bash
-pip install flask werkzeug
+pip install -r requirements.txt
 ```
 
 ## Run the vulnerable version (port 5000)
@@ -34,10 +36,13 @@ chmod +x exploit_demo.sh verify_fix.sh
 
 ## What's inside
 - `vulnerable/` — intentionally broken app (3 vulns, see docs/vulnerabilities.md)
-- `secure/` — same app, fixed
+- `secure/` — same app, fixed with role validation, parameterized queries, rate limiting & lockout
+- `docs/threat_model.md` — comprehensive STRIDE threat model, asset analysis & trust boundaries
 - `docs/vulnerabilities.md` — root cause + impact + fix per vulnerability
 - `docs/security_report.md` — assessment summary, scope, limitations
 - `poc/` — curl-based exploit and verification scripts
+- `tests/` — automated regression test suite (pytest + Flask test client)
+- `.github/workflows/security-ci.yml` — automated regression testing and Bandit SAST scanner
 
 ## The 3 vulnerabilities
 1. **IDOR** on `/profile/<id>` — any user can view any other user's profile
