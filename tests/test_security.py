@@ -202,3 +202,16 @@ def test_missing_secret_key_fails_fast_in_production():
 
     with pytest.raises(RuntimeError, match="SECRET_KEY environment variable is required"):
         Config.check_valid({"TESTING": False, "SECRET_KEY": None})
+
+
+def test_app_factory_create_app():
+    """
+    App Factory Pattern:
+    create_app() must accept configuration objects and return a properly configured Flask app.
+    """
+    from secure.app import create_app
+    from secure.config import TestingConfig
+
+    test_app = create_app(TestingConfig)
+    assert test_app.config["TESTING"] is True
+    assert test_app.config["SECRET_KEY"] == "test-secret-key-32-bytes-long!"
