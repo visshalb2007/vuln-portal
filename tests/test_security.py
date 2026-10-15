@@ -227,3 +227,18 @@ def test_database_foreign_keys_enabled(app):
         db = get_db()
         fk_status = db.execute("PRAGMA foreign_keys").fetchone()[0]
         assert fk_status == 1
+
+
+def test_seed_passwords_not_hardcoded(monkeypatch):
+    """
+    Seed Credential Hardening:
+    Seed passwords must not be hardcoded in secure/ and must generate random values or read from env.
+    """
+    from secure.db import get_seed_passwords
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("ALICE_PASSWORD", raising=False)
+    monkeypatch.delenv("BOB_PASSWORD", raising=False)
+
+    passwords = get_seed_passwords()
+    assert len(passwords["admin"]) >= 16
+    assert passwords["admin"] != "admin123"

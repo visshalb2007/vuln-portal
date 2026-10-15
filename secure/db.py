@@ -39,6 +39,36 @@ def ensure_schema(db):
     db.commit()
 
 
+import secrets
+
+
+def get_seed_passwords():
+    seed_cfg = {}
+    try:
+        seed_cfg = current_app.config.get("SEED_PASSWORDS") or {}
+    except RuntimeError:
+        pass
+
+    admin_pw = os.environ.get("ADMIN_PASSWORD") or seed_cfg.get("admin") or secrets.token_urlsafe(16)
+    alice_pw = os.environ.get("ALICE_PASSWORD") or seed_cfg.get("alice") or secrets.token_urlsafe(16)
+    bob_pw = os.environ.get("BOB_PASSWORD") or seed_cfg.get("bob") or secrets.token_urlsafe(16)
+
+    generated = []
+    if not os.environ.get("ADMIN_PASSWORD") and not seed_cfg.get("admin"):
+        generated.append(f"  admin: {admin_pw}")
+    if not os.environ.get("ALICE_PASSWORD") and not seed_cfg.get("alice"):
+        generated.append(f"  alice: {alice_pw}")
+    if not os.environ.get("BOB_PASSWORD") and not seed_cfg.get("bob"):
+        generated.append(f"  bob:   {bob_pw}")
+
+    if generated:
+        print("[INIT] Generated random seed credentials for initial setup:")
+        for line in generated:
+            print(line)
+
+    return {"admin": admin_pw, "alice": alice_pw, "bob": bob_pw}
+
+
 def init_db(db_path=None):
     if db_path is None:
         try:
@@ -70,13 +100,14 @@ def init_db(db_path=None):
     );
     """)
 
+    passwords = get_seed_passwords()
     from werkzeug.security import generate_password_hash
     db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("admin", generate_password_hash("admin123"), "admin", "Club Admin", "admin@club.edu", "9999999999"))
+               ("admin", generate_password_hash(passwords["admin"]), "admin", "Club Admin", "admin@club.edu", "9999999999"))
     db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("alice", generate_password_hash("alicepw"), "member", "Alice Member", "alice@club.edu", "9000000001"))
+               ("alice", generate_password_hash(passwords["alice"]), "member", "Alice Member", "alice@club.edu", "9000000001"))
     db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("bob", generate_password_hash("bobpw"), "member", "Bob Member", "bob@club.edu", "9000000002"))
+               ("bob", generate_password_hash(passwords["bob"]), "member", "Bob Member", "bob@club.edu", "9000000002"))
     db.execute("INSERT INTO events (title,description,created_by) VALUES (?,?,?)",
                ("Hackathon 2026", "24hr coding event", 1))
     ensure_schema(db)
