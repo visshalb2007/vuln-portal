@@ -61,3 +61,29 @@ def test_legitimate_access_member_can_view_own_profile(member_client):
     assert resp.status_code == 200
     assert b"Bob Member" in resp.data
     assert b"bob@club.edu" in resp.data
+
+
+def test_legitimate_access_admin_can_view_admin_users(admin_client):
+    """
+    Legitimate Access:
+    Authenticated user 'admin' (id=1, role='admin') must successfully access /admin/users.
+    Verifies that the response contains user roster and does NOT leak password hashes.
+    """
+    resp = admin_client.get("/admin/users")
+    assert resp.status_code == 200
+    assert b"All Users (Admin)" in resp.data
+    assert b"admin@club.edu" in resp.data
+    assert b"alice@club.edu" in resp.data
+    assert b"bob@club.edu" in resp.data
+    assert b"scrypt:" not in resp.data
+    assert b"pbkdf2:" not in resp.data
+
+
+def test_legitimate_access_admin_can_view_any_profile(admin_client):
+    """
+    Legitimate Access:
+    Admin role can view member profiles (e.g., bob at /profile/3) for administrative auditing.
+    """
+    resp = admin_client.get("/profile/3")
+    assert resp.status_code == 200
+    assert b"Bob Member" in resp.data
