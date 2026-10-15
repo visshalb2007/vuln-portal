@@ -163,3 +163,29 @@ def test_successful_login_resets_failed_attempt_counter(client, app):
         assert user["failed_attempts"] == 0
         assert user["locked_until"] is None
         conn.close()
+
+
+def test_ip_rate_limiting_on_login(client):
+    """
+    IP Rate Limiting:
+    Flask-Limiter restricts POST requests on /login to 5 per minute per IP.
+    The 6th request from the same IP within a minute must return HTTP 429 Too Many Requests.
+    """
+    test_ip = "10.0.0.42"
+    # Send 5 allowable requests from the same IP
+    for i in range(5):
+        resp = client.post(
+            "/login",
+            data={"username": f"attacker_{i}", "password": "wrong"},
+            environ_overrides={"REMOTE_ADDR": test_ip}
+        )
+        assert resp.status_code == 200
+
+    # 6th request from the same IP must be throttled with HTTP 429
+    resp_rate_limited = client.post(
+        "/login",
+        data={"username": "attacker_6", "password": "wrong"},
+        environ_overrides={"REMOTE_ADDR": test_ip}
+    )
+    assert resp_rate_limited.status_code == 429
+    assert b"Too many requests" in resp_rate_limited.data
