@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ Trust Issues: College Club Portal Security Lab
+# Trust Issues: College Club Portal Security Lab
 
 **A Full-Spectrum Cyber Defense Benchmarking Environment & Dual-State Vulnerability Lab**
 
@@ -18,12 +18,12 @@
 
 ---
 
-> ⚠️ **LEGAL & ETHICAL DISCLAIMER**  
+> **LEGAL & ETHICAL DISCLAIMER**  
 > This repository contains deliberately vulnerable software designed strictly for educational demonstrations, security audits, and red/blue team training. **Never expose the `vulnerable/` instance to public networks or production infrastructure.**
 
 ---
 
-## 📌 Executive Overview
+## Executive Overview
 
 **Trust Issues** is an advanced hands-on cybersecurity laboratory modeling a real-world web application across two parallel architectural states:
 
@@ -34,7 +34,7 @@ Accompanied by a formal **STRIDE Threat Model**, an **Automated Pytest Security 
 
 ---
 
-## 🏗️ Architecture & Trust Boundaries
+## Architecture & Trust Boundaries
 
 ```
                              UNTRUSTED CLIENT / ADVERSARY
@@ -45,12 +45,12 @@ Accompanied by a formal **STRIDE Threat Model**, an **Automated Pytest Security 
           vulnerable/                                       secure/
                    │                                             │
  ┌─────────────────▼─────────────────┐       ┌───────────────────▼───────────────────┐
- │ ❌ Concatenated SQL Queries       │       │ 🛡️ Flask-Limiter (5 req/min/IP)       │
- │ ❌ Plaintext Password Storage     │       │ 🛡️ Account Lockout (5 failed attempts)│
- │ ❌ Client-Side Link Hiding        │       │ 🛡️ Parameterized SQLite Queries       │
- │ ❌ No Role Check on /admin/users  │       │ 🛡️ One-Way scrypt/PBKDF2 Password Hash│
- │ ❌ Horizontal IDOR on /profile/:id│       │ 🛡️ Ownership & @admin_required Guards │
- │ ❌ Permissive Cookies & Headers   │       │ 🛡️ CSP, X-Frame-Options, HttpOnly     │
+ │ Concatenated SQL Queries          │       │ Flask-Limiter (5 req/min/IP)          │
+ │ Plaintext Password Storage        │       │ Account Lockout (5 failed attempts)   │
+ │ Client-Side Link Hiding           │       │ Parameterized SQLite Queries          │
+ │ No Role Check on /admin/users     │       │ One-Way scrypt/PBKDF2 Password Hash   │
+ │ Horizontal IDOR on /profile/:id   │       │ Ownership & @admin_required Guards    │
+ │ Permissive Cookies & Headers      │       │ CSP, X-Frame-Options, HttpOnly        │
  └─────────────────┬─────────────────┘       └───────────────────┬───────────────────┘
                    │                                             │
                    ▼                                             ▼
@@ -59,7 +59,7 @@ Accompanied by a formal **STRIDE Threat Model**, an **Automated Pytest Security 
 
 ---
 
-## 🔬 Vulnerability & Remediation Matrix
+## Vulnerability & Remediation Matrix
 
 | # | Vulnerability | OWASP 2021 | CWE | Vulnerable Vector (`vulnerable/`) | Secure Implementation (`secure/`) | CVSS v3.1 |
 |:---:|:---|:---|:---|:---|:---|:---:|
@@ -70,7 +70,7 @@ Accompanied by a formal **STRIDE Threat Model**, an **Automated Pytest Security 
 
 ---
 
-## 🚀 Quickstart & Installation
+## Quickstart & Installation
 
 ### 1. Prerequisites
 - **Python**: `>= 3.10` (Python 3.11 recommended)
@@ -114,7 +114,7 @@ python app.py
 
 ---
 
-## 👥 Seed Credentials & Role Hierarchy
+## Seed Credentials & Role Hierarchy
 
 Both environments are pre-seeded with the following test credentials:
 
@@ -126,7 +126,7 @@ Both environments are pre-seeded with the following test credentials:
 
 ---
 
-## 🧪 Automated Testing & Verification
+## Automated Testing & Verification
 
 ### 1. Pytest Automated Regression Suite
 The test suite in [`tests/test_security.py`](tests/test_security.py) executes 10 comprehensive security regression tests using isolated SQLite test database fixtures:
@@ -136,16 +136,16 @@ pytest -v
 ```
 
 **Test Coverage Summary:**
-- ✅ `test_sqli_login_bypass_fails`: Verifies SQL injection payloads (`admin' --`, `' OR '1'='1`) fail to authenticate.
-- ✅ `test_idor_non_admin_cannot_view_other_profile`: Verifies member `bob` receives `403 Forbidden` attempting to access `/profile/1` or `/profile/2`.
-- ✅ `test_broken_access_control_member_cannot_access_admin_users`: Verifies member `bob` receives `403 Forbidden` on `/admin/users`.
-- ✅ `test_legitimate_access_member_can_view_own_profile`: Verifies `bob` successfully accesses `/profile/3`.
-- ✅ `test_legitimate_access_admin_can_view_admin_users`: Verifies `admin` accesses `/admin/users` with password hash redaction.
-- ✅ `test_legitimate_access_admin_can_view_any_profile`: Verifies `admin` can audit member profiles.
-- ✅ `test_unauthenticated_requests_redirect_to_login`: Verifies anonymous requests to protected routes redirect to `/login`.
-- ✅ `test_account_lockout_after_five_failed_attempts`: Verifies account locks for 5 minutes after 5 bad attempts.
-- ✅ `test_successful_login_resets_failed_attempt_counter`: Verifies valid login clears failure counters.
-- ✅ `test_ip_rate_limiting_on_login`: Verifies Flask-Limiter returns `429 Too Many Requests` on rapid bursts.
+- `test_sqli_login_bypass_fails`: Verifies SQL injection payloads (`admin' --`, `' OR '1'='1`) fail to authenticate.
+- `test_idor_non_admin_cannot_view_other_profile`: Verifies member `bob` receives `403 Forbidden` attempting to access `/profile/1` or `/profile/2`.
+- `test_broken_access_control_member_cannot_access_admin_users`: Verifies member `bob` receives `403 Forbidden` on `/admin/users`.
+- `test_legitimate_access_member_can_view_own_profile`: Verifies `bob` successfully accesses `/profile/3`.
+- `test_legitimate_access_admin_can_view_admin_users`: Verifies `admin` accesses `/admin/users` with password hash redaction.
+- `test_legitimate_access_admin_can_view_any_profile`: Verifies `admin` can audit member profiles.
+- `test_unauthenticated_requests_redirect_to_login`: Verifies anonymous requests to protected routes redirect to `/login`.
+- `test_account_lockout_after_five_failed_attempts`: Verifies account locks for 5 minutes after 5 bad attempts.
+- `test_successful_login_resets_failed_attempt_counter`: Verifies valid login clears failure counters.
+- `test_ip_rate_limiting_on_login`: Verifies Flask-Limiter returns `429 Too Many Requests` on rapid bursts.
 
 ### 2. Static Application Security Testing (Bandit)
 Run AST-based static vulnerability scanning against the hardened codebase:
@@ -171,7 +171,7 @@ chmod +x exploit_demo.sh verify_fix.sh
 
 ---
 
-## ⚙️ DevSecOps & CI Pipeline
+## DevSecOps & CI Pipeline
 
 Every pull request and push to `main` triggers the automated GitHub Actions workflow defined in [`.github/workflows/security-ci.yml`](.github/workflows/security-ci.yml):
 
@@ -191,7 +191,7 @@ Every pull request and push to `main` triggers the automated GitHub Actions work
 
 ---
 
-## 📚 Documentation Catalog
+## Documentation Catalog
 
 | Document | Purpose |
 |---|---|
@@ -201,7 +201,7 @@ Every pull request and push to `main` triggers the automated GitHub Actions work
 
 ---
 
-## 🔒 Security Hardening Architecture
+## Security Hardening Architecture
 
 ### Defense-in-Depth Implementation in `secure/app.py`:
 
