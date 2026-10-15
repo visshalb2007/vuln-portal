@@ -12,9 +12,14 @@ import sqlite3, os
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+from secure.config import Config, TestingConfig
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-prod-use-env-var")
-DB = os.path.join(os.path.dirname(__file__), "club.db")
+is_testing = os.environ.get("TESTING", "").lower() in ("true", "1") or os.environ.get("FLASK_ENV") == "testing"
+app.config.from_object(TestingConfig if is_testing else Config)
+Config.check_valid(app.config)
+
+DB = app.config.get("DATABASE", os.path.join(os.path.dirname(__file__), "club.db"))
 
 limiter = Limiter(
     key_func=get_remote_address,

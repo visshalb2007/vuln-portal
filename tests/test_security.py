@@ -189,3 +189,16 @@ def test_ip_rate_limiting_on_login(client):
     )
     assert resp_rate_limited.status_code == 429
     assert b"Too many requests" in resp_rate_limited.data
+
+
+def test_missing_secret_key_fails_fast_in_production():
+    """
+    Security Configuration:
+    In non-testing mode, a missing SECRET_KEY must fail fast at startup
+    and never fall back to a hardcoded insecure default key.
+    """
+    import pytest
+    from secure.config import Config
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY environment variable is required"):
+        Config.check_valid({"TESTING": False, "SECRET_KEY": None})
