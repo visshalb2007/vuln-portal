@@ -111,7 +111,9 @@ def admin_required(f):
 
 
 # ---------- FIX #2: parameterized query + hashed password check ----------
+# BONUS: Rate limiting on login attempts (5 per minute per IP)
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute", methods=["POST"])
 def login():
     if request.method == "POST":
         from werkzeug.security import check_password_hash
