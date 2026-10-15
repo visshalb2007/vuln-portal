@@ -74,3 +74,41 @@ The College Club Portal is a lightweight web application built on Flask with SQL
 - **Privilege Level**: Local network participant, shared device user, or club officer.
 - **Capabilities**: Direct access to local storage, network traffic snooping on unencrypted HTTP, or exploitation of unvalidated session tokens and missing audit logging.
 - **Goals**: Exfiltrate user hashes, tamper with database records, harvest PII at rest.
+
+
+## Attack Surfaces
+
+```
++---------------------------------------------------------------------------------------+
+| Route / Surface          | Method     | Auth State        | Key Threat Vectors         |
++--------------------------+------------+-------------------+---------------------------+
+| /login                   | GET, POST  | Anonymous         | SQLi, brute-force, lockout |
+| /profile/<int:user_id>   | GET        | Authenticated     | IDOR, PII leakage         |
+| /admin/users             | GET        | Member or Admin   | Broken access control      |
+| Session Cookie           | Client-side| All sessions      | Tampering, XSS hijacking  |
++---------------------------------------------------------------------------------------+
+```
+
+### 1. Login Form (`/login` — POST)
+- **Entry Point**: Form inputs (`username`, `password`).
+- **Data Flow**: Untrusted string input received by Flask, processed in database query for user authentication.
+- **Threat Vector**: SQL injection via unescaped string formatting (e.g., `' OR '1'='1`), automated credential stuffing, and unthrottled dictionary attacks.
+- **Trust Boundary**: Crossing from untrusted public web client into application server and SQLite database.
+
+### 2. Member Profile Route (`/profile/<int:user_id>` — GET)
+- **Entry Point**: Path parameter `user_id` supplied in URL.
+- **Data Flow**: Flask router extracts integer identifier and queries `users` table to render personal profile template.
+- **Threat Vector**: Insecure Direct Object References (IDOR). A member altering the path parameter (e.g., from `/profile/3` to `/profile/1` or `/profile/2`) to view other members' or administrators' phone numbers, emails, and full names without authorization.
+- **Trust Boundary**: Crossing between authenticated user session and multi-tenant user profile datastore.
+
+### 3. Administrative Panel (`/admin/users` — GET)
+- **Entry Point**: HTTP GET request to `/admin/users`.
+- **Data Flow**: Retrieves all user records from database and renders user list template.
+- **Threat Vector**: Broken Function-Level Authorization (BFLA) / Forced Browsing. In vulnerable configurations, omitting server-side role verification allows any authenticated non-admin member to view the user list.
+- **Trust Boundary**: Privilege boundary separating standard `member` role from privileged `admin` role.
+
+### 4. Client Session Cookie (`session` cookie)
+- **Entry Point**: HTTP `Cookie` header transmitted on every browser request.
+- **Data Flow**: Signed cookie unpacked by Flask's `securecookie` serializer to extract `user_id` and `role`.
+- **Threat Vector**: Cookie tampering, session fixation, token sniffing over unencrypted connections, or cross-site script theft if `HttpOnly` or `SameSite` flags are omitted.
+- **Trust Boundary**: Client-held persistent state transmitted back into server request lifecycle.
