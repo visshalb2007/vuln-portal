@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><head><title>Dashboard</title></head>
+<body>
+<h2>Club Dashboard</h2>
+<p>Role: {{ role }}</p>
+<p><a href="/profile/1">My Profile (if id 1)</a> | <a href="/admin/users">Admin Users</a> | <a href="/logout">Logout</a></p>
+<h3>Events</h3>
+<ul>
+{% for e in events %}
+  <li>{{ e['title'] }} - {{ e['description'] }}</li>
+{% endfor %}
+</ul>
+</body></html>

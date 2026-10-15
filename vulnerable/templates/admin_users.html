@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html><head><title>Admin - Users</title></head>
+<body>
+<h2>All Users (Admin)</h2>
+<table border="1">
+<tr><th>ID</th><th>Username</th><th>Password</th><th>Role</th><th>Email</th></tr>
+{% for u in users %}
+<tr><td>{{ u['id'] }}</td><td>{{ u['username'] }}</td><td>{{ u['password'] }}</td><td>{{ u['role'] }}</td><td>{{ u['email'] }}</td></tr>
+{% endfor %}
+</table>
+<p><a href="/">Back</a></p>
+</body></html>
