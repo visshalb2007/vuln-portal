@@ -14,12 +14,23 @@ app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-prod-use-env-var")
 DB = os.path.join(os.path.dirname(__file__), "club.db")
 
 
+def ensure_schema(db):
+    cursor = db.execute("PRAGMA table_info(users)")
+    cols = [row["name"] for row in cursor.fetchall()]
+    if cols and "failed_attempts" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0")
+    if cols and "locked_until" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN locked_until TEXT")
+    db.commit()
+
+
 def get_db():
     db = getattr(g, "_db", None)
     if db is None:
         db_path = app.config.get("DATABASE", DB)
         db = g._db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
+        ensure_schema(db)
     return db
 
 
@@ -43,7 +54,9 @@ def init_db(db_path=None):
         role TEXT,
         full_name TEXT,
         email TEXT,
-        phone TEXT
+        phone TEXT,
+        failed_attempts INTEGER DEFAULT 0,
+        locked_until TEXT
     );
     CREATE TABLE events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
