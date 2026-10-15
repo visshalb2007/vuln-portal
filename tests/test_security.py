@@ -87,3 +87,16 @@ def test_legitimate_access_admin_can_view_any_profile(admin_client):
     resp = admin_client.get("/profile/3")
     assert resp.status_code == 200
     assert b"Bob Member" in resp.data
+
+
+def test_unauthenticated_requests_redirect_to_login(client):
+    """
+    Access Control Baseline:
+    Anonymous requests to protected endpoints (/, /profile/1, /admin/users)
+    must redirect (302) to /login.
+    """
+    protected_urls = ["/", "/profile/1", "/admin/users"]
+    for url in protected_urls:
+        resp = client.get(url, follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
