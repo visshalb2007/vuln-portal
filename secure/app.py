@@ -200,6 +200,11 @@ def forbidden(e):
     return render_template("403.html"), 403
 
 
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template("login.html", error="Too many requests. Rate limit exceeded, try again later."), 429
+
+
 # ---------- Bonus hardening ----------
 @app.after_request
 def set_security_headers(resp):
