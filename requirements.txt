@@ -1,0 +1,5 @@
+flask>=3.0.0
+werkzeug>=3.0.0
+pytest>=8.0.0
+flask-limiter>=3.5.0
+bandit>=1.7.5
