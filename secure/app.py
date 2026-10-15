@@ -124,6 +124,8 @@ def login():
                     pass
 
             if check_password_hash(user["password"], password):
+                db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],))
+                db.commit()
                 session.clear()
                 session["user_id"] = user["id"]
                 session["role"] = user["role"]
