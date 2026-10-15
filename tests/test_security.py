@@ -102,7 +102,7 @@ def test_unauthenticated_requests_redirect_to_login(client):
         assert "/login" in resp.headers["Location"]
 
 
-def test_account_lockout_after_five_failed_attempts(client):
+def test_account_lockout_after_five_failed_attempts(client, app):
     """
     Account Lockout Defense:
     Submitting 5 consecutive incorrect passwords for a registered username
@@ -116,20 +116,33 @@ def test_account_lockout_after_five_failed_attempts(client):
         assert resp.status_code == 200
         assert b"Invalid credentials" in resp.data
 
-    # Attempt 5 reaches the threshold: must trigger account lockout
-    resp_lock = client.post("/login", data={"username": target_user, "password": "wrong_5"})
+    # Attempt 5 reaches the threshold: triggers account lockout
+    resp_lock = client.post(
+        "/login",
+        data={"username": target_user, "password": "wrong_5"},
+        environ_overrides={"REMOTE_ADDR": "192.168.1.5"}
+    )
     assert resp_lock.status_code == 200
-    assert b"Account locked, try again later" in resp_lock.data
+    assert b"Invalid credentials" in resp_lock.data
 
-    # Immediate attempt with the correct password must still be rejected due to active lock
-    # Note: simulate another IP/client to isolate username lockout from IP-level rate limiting
+    # Verify in DB that account is marked locked
+    with app.app_context():
+        from secure.db import get_db
+        db = get_db()
+        user_row = db.execute("SELECT * FROM users WHERE username = ?", (target_user,)).fetchone()
+        assert user_row["locked_until"] is not None
+        assert user_row["failed_attempts"] >= 5
+
+    # Attempt with correct password while locked is rejected with identical status and message
     resp_blocked = client.post(
         "/login",
         data={"username": target_user, "password": "bobpw"},
         environ_overrides={"REMOTE_ADDR": "192.168.1.100"}
     )
     assert resp_blocked.status_code == 200
-    assert b"Account locked, try again later" in resp_blocked.data
+    assert b"Invalid credentials" in resp_blocked.data
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
 
 
 def test_successful_login_resets_failed_attempt_counter(client, app):
@@ -256,7 +269,7 @@ def test_login_page_does_not_contain_credential_hint(client):
     assert b"bob/bobpw" not in resp.data
 
 
-def test_lockout_expiry_resets_failed_attempts(client, monkeypatch):
+def test_lockout_expiry_resets_failed_attempts(client, monkeypatch, app):
     """
     Lockout Expiry Hardening:
     When an account lock expires, failed_attempts must reset to 0 so that a single
@@ -274,13 +287,20 @@ def test_lockout_expiry_resets_failed_attempts(client, monkeypatch):
             environ_overrides={"REMOTE_ADDR": f"192.168.1.{i}"}
         )
 
-    # Verify locked
+    # Verify locked in DB
+    with app.app_context():
+        from secure.db import get_db
+        db = get_db()
+        user_row = db.execute("SELECT * FROM users WHERE username = ?", (target_user,)).fetchone()
+        assert user_row["locked_until"] is not None
+
     resp_locked = client.post(
         "/login",
         data={"username": target_user, "password": "wrong"},
         environ_overrides={"REMOTE_ADDR": "192.168.1.100"}
     )
-    assert b"Account locked, try again later" in resp_locked.data
+    assert resp_locked.status_code == 200
+    assert b"Invalid credentials" in resp_locked.data
 
     # Freeze/fast-forward time to 6 minutes later (lock was 5 minutes)
     future_time = dt.now(tz.utc) + timedelta(minutes=6)
@@ -305,3 +325,28 @@ def test_lockout_expiry_resets_failed_attempts(client, monkeypatch):
     assert resp_after_expiry.status_code == 200
     assert b"Invalid credentials" in resp_after_expiry.data
     assert b"Account locked, try again later" not in resp_after_expiry.data
+
+
+def test_anti_enumeration_identical_responses_and_dummy_hash(client):
+    """
+    Anti-Enumeration & Timing Defense:
+    Unknown username, incorrect password, and locked accounts must return
+    strictly identical HTTP status (200) and error messages to prevent username
+    harvesting and enumeration.
+    """
+    # 1. Unknown user
+    resp_unknown = client.post(
+        "/login",
+        data={"username": "nonexistent_user", "password": "any_password"},
+        environ_overrides={"REMOTE_ADDR": "192.168.2.1"}
+    )
+    # 2. Known user with wrong password
+    resp_wrong_pw = client.post(
+        "/login",
+        data={"username": "alice", "password": "wrong_password"},
+        environ_overrides={"REMOTE_ADDR": "192.168.2.2"}
+    )
+    assert resp_unknown.status_code == 200
+    assert resp_wrong_pw.status_code == 200
+    assert resp_unknown.data == resp_wrong_pw.data
+    assert b"Invalid credentials" in resp_unknown.data

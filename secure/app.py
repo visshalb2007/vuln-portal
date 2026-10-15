@@ -9,11 +9,14 @@ from flask import Flask, request, session, redirect, url_for, render_template, g
 from functools import wraps
 from datetime import datetime, timedelta, timezone
 import sqlite3, os
+from werkzeug.security import check_password_hash, generate_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from secure.config import Config, TestingConfig
 from secure.db import get_db, close_db, init_db, DB_FALLBACK as DB
+
+DUMMY_PASSWORD_HASH = generate_password_hash("timing_equalization_secret")
 
 limiter = Limiter(
     key_func=get_remote_address,
@@ -71,14 +74,13 @@ def create_app(config=None):
     @limiter.limit("5 per minute", methods=["POST"])
     def login():
         if request.method == "POST":
-            from werkzeug.security import check_password_hash
             username = request.form["username"]
             password = request.form["password"]
             db = get_db()
-            # FIXED: parameterized query, no string concatenation
             user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+
+            is_locked = False
             if user:
-                # Check if account is currently locked
                 locked_until_str = user["locked_until"]
                 if locked_until_str:
                     try:
@@ -86,7 +88,7 @@ def create_app(config=None):
                         if locked_until.tzinfo is None:
                             locked_until = locked_until.replace(tzinfo=timezone.utc)
                         if datetime.now(timezone.utc) < locked_until:
-                            return render_template("login.html", error="Account locked, try again later.")
+                            is_locked = True
                         else:
                             db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],))
                             db.commit()
@@ -94,6 +96,7 @@ def create_app(config=None):
                     except (ValueError, TypeError):
                         pass
 
+            if user and not is_locked:
                 if check_password_hash(user["password"], password):
                     db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],))
                     db.commit()
@@ -107,13 +110,18 @@ def create_app(config=None):
                         lock_until = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
                         db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?",
                                    (failed, lock_until, user["id"]))
-                        db.commit()
-                        return render_template("login.html", error="Account locked, try again later.")
                     else:
                         db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", (failed, user["id"]))
-                        db.commit()
-                        return render_template("login.html", error="Invalid credentials")
-            return render_template("login.html", error="Invalid credentials")
+                    db.commit()
+                    return render_template("login.html", error="Invalid credentials")
+            elif user and is_locked:
+                # Timing equalization against locked accounts
+                check_password_hash(user["password"], password)
+                return render_template("login.html", error="Invalid credentials")
+            else:
+                # Timing equalization against unknown usernames
+                check_password_hash(DUMMY_PASSWORD_HASH, password)
+                return render_template("login.html", error="Invalid credentials")
         return render_template("login.html")
 
     @app.route("/logout")
