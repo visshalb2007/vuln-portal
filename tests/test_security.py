@@ -130,3 +130,36 @@ def test_account_lockout_after_five_failed_attempts(client):
     )
     assert resp_blocked.status_code == 200
     assert b"Account locked, try again later" in resp_blocked.data
+
+
+def test_successful_login_resets_failed_attempt_counter(client, app):
+    """
+    Lockout Counter Reset:
+    When a user with prior failed login attempts enters their correct password,
+    the failed attempt counter must reset to zero and session authentication succeed.
+    """
+    target_user = "alice"
+    # Generate 2 failed attempts
+    client.post("/login", data={"username": target_user, "password": "wrong_password_1"})
+    client.post("/login", data={"username": target_user, "password": "wrong_password_2"})
+
+    # Now login with the correct password
+    resp = client.post(
+        "/login",
+        data={"username": target_user, "password": "alicepw"},
+        environ_overrides={"REMOTE_ADDR": "192.168.1.101"},
+        follow_redirects=True
+    )
+    assert resp.status_code == 200
+    assert b"Club Dashboard" in resp.data
+    assert b"/profile/2" in resp.data
+
+    # Verify database counter has reset
+    with app.app_context():
+        import sqlite3
+        conn = sqlite3.connect(app.config["DATABASE"])
+        conn.row_factory = sqlite3.Row
+        user = conn.execute("SELECT * FROM users WHERE username = ?", (target_user,)).fetchone()
+        assert user["failed_attempts"] == 0
+        assert user["locked_until"] is None
+        conn.close()
