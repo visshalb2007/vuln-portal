@@ -215,3 +215,15 @@ def test_app_factory_create_app():
     test_app = create_app(TestingConfig)
     assert test_app.config["TESTING"] is True
     assert test_app.config["SECRET_KEY"] == "test-secret-key-32-bytes-long!"
+
+
+def test_database_foreign_keys_enabled(app):
+    """
+    Database Hardening:
+    SQLite database connections must have PRAGMA foreign_keys enabled.
+    """
+    with app.app_context():
+        from secure.db import get_db
+        db = get_db()
+        fk_status = db.execute("PRAGMA foreign_keys").fetchone()[0]
+        assert fk_status == 1

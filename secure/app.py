@@ -13,8 +13,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from secure.config import Config, TestingConfig
-
-DB = os.path.join(os.path.dirname(__file__), "club.db")
+from secure.db import get_db, close_db, init_db, DB_FALLBACK as DB
 
 limiter = Limiter(
     key_func=get_remote_address,
@@ -22,71 +21,6 @@ limiter = Limiter(
     storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"),
     strategy="fixed-window",
 )
-
-
-def ensure_schema(db):
-    cursor = db.execute("PRAGMA table_info(users)")
-    cols = [row["name"] for row in cursor.fetchall()]
-    if cols and "failed_attempts" not in cols:
-        db.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0")
-    if cols and "locked_until" not in cols:
-        db.execute("ALTER TABLE users ADD COLUMN locked_until TEXT")
-    db.commit()
-
-
-def get_db():
-    db = getattr(g, "_db", None)
-    if db is None:
-        try:
-            db_path = current_app.config.get("DATABASE", DB)
-        except RuntimeError:
-            db_path = DB
-        db = g._db = sqlite3.connect(db_path)
-        db.row_factory = sqlite3.Row
-        ensure_schema(db)
-    return db
-
-
-def init_db(db_path=None):
-    if db_path is None:
-        try:
-            db_path = current_app.config.get("DATABASE", DB)
-        except RuntimeError:
-            db_path = DB
-    db = sqlite3.connect(db_path)
-    db.executescript("""
-    DROP TABLE IF EXISTS users;
-    DROP TABLE IF EXISTS events;
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT,
-        role TEXT,
-        full_name TEXT,
-        email TEXT,
-        phone TEXT,
-        failed_attempts INTEGER DEFAULT 0,
-        locked_until TEXT
-    );
-    CREATE TABLE events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        description TEXT,
-        created_by INTEGER
-    );
-    """)
-    # FIX: passwords hashed, not plaintext
-    from werkzeug.security import generate_password_hash
-    db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("admin", generate_password_hash("admin123"), "admin", "Club Admin", "admin@club.edu", "9999999999"))
-    db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("alice", generate_password_hash("alicepw"), "member", "Alice Member", "alice@club.edu", "9000000001"))
-    db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("bob", generate_password_hash("bobpw"), "member", "Bob Member", "bob@club.edu", "9000000002"))
-    db.execute("INSERT INTO events (title,description,created_by) VALUES (?,?,?)",
-               ("Hackathon 2026", "24hr coding event", 1))
-    db.commit()
-    db.close()
 
 
 def login_required(f):
@@ -129,12 +63,7 @@ def create_app(config=None):
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
     limiter.init_app(app)
-
-    @app.teardown_appcontext
-    def close_db(exc):
-        db = getattr(g, "_db", None)
-        if db is not None:
-            db.close()
+    app.teardown_appcontext(close_db)
 
     # ---------- FIX #2: parameterized query + hashed password check ----------
     # BONUS: Rate limiting on login attempts (5 per minute per IP)
