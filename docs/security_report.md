@@ -48,12 +48,14 @@ against `secure/` (port 5001) and shows them blocked (403 / failed login).
 ## Completed Hardening Items
 - **Rate Limiting & Lockout**: Integrated `Flask-Limiter` (5 attempts/min/IP) on `/login`
   and enforced a 5-minute account lock after 5 consecutive failed authentication attempts.
+- **Automated Regression Test Suite**: Added `tests/test_security.py` covering SQL injection
+  bypass, IDOR on `/profile/<id>`, broken access control on `/admin/users`, 5-minute account
+  lockout, and IP rate limiting with isolated pytest testdb fixtures.
+- **CI Pipeline with SAST**: Implemented `.github/workflows/security-ci.yml` running pytest
+  and Bandit static application security testing, failing builds on any high-severity findings.
 
 ## Remaining Limitations
 - `SECRET_KEY` should come from an environment variable / secrets manager
   in any real deployment, not a hardcoded default.
 - `SESSION_COOKIE_SECURE` should be enabled once served over HTTPS.
 - No CSRF tokens on forms yet (would be needed before any production use).
-- No automated regression test suite included (bonus item, not implemented
-  in this pass).
-- [COMPLETED] Rate limiting/lockout on `/login` implemented and tested.
