@@ -7,6 +7,7 @@ Fixes the 3 vulnerabilities present in the vulnerable/ version:
 """
 from flask import Flask, request, session, redirect, url_for, render_template, g, abort
 from functools import wraps
+from datetime import datetime, timedelta, timezone
 import sqlite3, os
 
 app = Flask(__name__)
@@ -114,6 +115,11 @@ def login():
             session["user_id"] = user["id"]
             session["role"] = user["role"]
             return redirect(url_for("dashboard"))
+        elif user:
+            failed = (user["failed_attempts"] or 0) + 1
+            db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", (failed, user["id"]))
+            db.commit()
+            return render_template("login.html", error="Invalid credentials")
         return render_template("login.html", error="Invalid credentials")
     return render_template("login.html")
 
