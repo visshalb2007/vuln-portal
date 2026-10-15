@@ -112,3 +112,21 @@ The College Club Portal is a lightweight web application built on Flask with SQL
 - **Data Flow**: Signed cookie unpacked by Flask's `securecookie` serializer to extract `user_id` and `role`.
 - **Threat Vector**: Cookie tampering, session fixation, token sniffing over unencrypted connections, or cross-site script theft if `HttpOnly` or `SameSite` flags are omitted.
 - **Trust Boundary**: Client-held persistent state transmitted back into server request lifecycle.
+
+
+## STRIDE Threat Analysis & Mitigation Mapping
+
+The following matrix maps each system asset against the STRIDE threat model categories, identifying potential attack scenarios, affected surfaces, and specific mitigations implemented in `secure/app.py`:
+
+| Asset | STRIDE Category | Threat Scenario | Attack Surface | Mitigation in `secure/app.py` | Status |
+|-------|-----------------|-----------------|----------------|-------------------------------|--------|
+| **User Credentials** | **S**poofing | Attacker injects `' OR 1=1 --` into username field to bypass authentication and impersonate `admin`. | `/login` form (POST) | **Parameterized Queries & Hashing**: DB query uses SQL parameter placeholders (`SELECT * FROM users WHERE username = ?`, `(username,)`) and verifies hashes via `werkzeug.security.check_password_hash`. | Mitigated |
+| **User Credentials** | **I**nformation Disclosure | Plaintext passwords dumped from database file or exposed in application error logs. | SQLite database / queries | **One-way Password Hashing**: Passwords are never stored in plaintext; salted and hashed with PBKDF2/scrypt before persistence in `init_db()`. | Mitigated |
+| **Profile PII** | **I**nformation Disclosure | Member accesses another user's private phone number and email by incrementing ID in URL (IDOR). | `/profile/<int:user_id>` | **Ownership & Role Verification**: Route enforces `if session.get("role") != "admin" and session.get("user_id") != user_id: abort(403)`. | Mitigated |
+| **Admin Panel & Data** | **E**levation of Privilege | Standard authenticated member directly requests `/admin/users` to view internal member directory. | `/admin/users` | **Server-side Access Control Decorator**: Route is protected with `@admin_required`, rejecting unauthorized roles with HTTP 403 Forbidden. | Mitigated |
+| **Admin Panel & Data** | **I**nformation Disclosure | Admin user listing inadvertently renders password hashes or confidential credentials in the HTML view. | `/admin/users` template | **Projection Whitelisting**: SQL query strictly selects only non-sensitive columns (`SELECT id, username, role, email FROM users`), omitting password hash fields entirely. | Mitigated |
+| **Session Tokens** | **T**ampering | Client modifies session cookie payload to elevate role from `member` to `admin`. | HTTP `Cookie` header | **Cryptographic Signing**: Flask signs session cookies using HMAC with server-side `app.secret_key`, rejecting modified or forged payloads. | Mitigated |
+| **Session Tokens** | **I**nformation Disclosure | Cross-site scripting (XSS) payload executes in client browser and steals session token. | Session cookie | **HttpOnly & SameSite Flags**: `SESSION_COOKIE_HTTPONLY = True` prevents JavaScript reading cookies; `SESSION_COOKIE_SAMESITE = 'Lax'` prevents cross-site leakage; CSP headers applied. | Mitigated |
+| **Session Tokens** | **S**poofing | Session fixation attack where attacker pre-seeds session identifier prior to login. | `/login` | **Session Invalidation on Auth**: `session.clear()` is called immediately upon successful credential validation before setting new identity tokens. | Mitigated |
+| **Login Service** | **D**enial of Service / Brute Force | Automated credential stuffing bot submits thousands of rapid password guesses against `/login`. | `/login` endpoint | **Rate Limiting & Account Lockout**: Integrated `Flask-Limiter` per IP and 5-minute account lockout counter after 5 consecutive failed attempts. | Mitigated (Stage 3) |
+| **Application Integrity** | **R**epudiation | Malicious user conducts administrative actions with no trace or audit log. | Administrative actions | **Operational Recommendation**: Implement structured access and failure audit logging. | Planned |
