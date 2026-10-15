@@ -1,6 +1,7 @@
 <div align="center">
 
-# Trust Issues: College Club Portal Security Lab
+<img width="1617" height="405" alt="image" src="https://github.com/user-attachments/assets/a6b680e7-87f1-402b-b633-6c25c14e6a7a" />
+
 
 **A Full-Spectrum Cyber Defense Benchmarking Environment & Dual-State Vulnerability Lab**
 
