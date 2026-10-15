@@ -130,3 +130,13 @@ The following matrix maps each system asset against the STRIDE threat model cate
 | **Session Tokens** | **S**poofing | Session fixation attack where attacker pre-seeds session identifier prior to login. | `/login` | **Session Invalidation on Auth**: `session.clear()` is called immediately upon successful credential validation before setting new identity tokens. | Mitigated |
 | **Login Service** | **D**enial of Service / Brute Force | Automated credential stuffing bot submits thousands of rapid password guesses against `/login`. | `/login` endpoint | **Rate Limiting & Account Lockout**: Integrated `Flask-Limiter` per IP and 5-minute account lockout counter after 5 consecutive failed attempts. | Mitigated (Stage 3) |
 | **Application Integrity** | **R**epudiation | Malicious user conducts administrative actions with no trace or audit log. | Administrative actions | **Operational Recommendation**: Implement structured access and failure audit logging. | Planned |
+
+
+## Residual Risk & Defense-in-Depth Recommendations
+
+While `secure/app.py` directly addresses primary vulnerabilities, the following operational requirements must be maintained in production:
+
+1. **Secret Key Management**: `SECRET_KEY` currently falls back to a development string; production deployments must inject high-entropy secrets via protected environment variables.
+2. **TLS / HTTPS Enforcement**: `SESSION_COOKIE_SECURE = True` must be enabled when terminated under TLS to prevent passive network eavesdropping.
+3. **Cross-Site Request Forgery (CSRF)**: State-changing POST endpoints (such as future event creation or profile modifications) should incorporate CSRF protection (e.g., Flask-WTF / CSRFProtect).
+4. **Automated Verification**: Regular execution of unit/regression security tests and automated static application security testing (SAST) in CI pipelines.
