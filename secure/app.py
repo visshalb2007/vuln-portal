@@ -87,6 +87,10 @@ def create_app(config=None):
                             locked_until = locked_until.replace(tzinfo=timezone.utc)
                         if datetime.now(timezone.utc) < locked_until:
                             return render_template("login.html", error="Account locked, try again later.")
+                        else:
+                            db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],))
+                            db.commit()
+                            user = db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
                     except (ValueError, TypeError):
                         pass
 

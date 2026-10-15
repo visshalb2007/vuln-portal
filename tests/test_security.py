@@ -254,3 +254,54 @@ def test_login_page_does_not_contain_credential_hint(client):
     assert b"admin/admin123" not in resp.data
     assert b"alice/alicepw" not in resp.data
     assert b"bob/bobpw" not in resp.data
+
+
+def test_lockout_expiry_resets_failed_attempts(client, monkeypatch):
+    """
+    Lockout Expiry Hardening:
+    When an account lock expires, failed_attempts must reset to 0 so that a single
+    wrong password after expiry does not immediately re-lock the account.
+    """
+    from datetime import datetime as dt, timedelta, timezone as tz
+    import secure.app
+
+    target_user = "bob"
+    # 5 failed attempts trigger lockout
+    for i in range(1, 6):
+        client.post(
+            "/login",
+            data={"username": target_user, "password": f"wrong_{i}"},
+            environ_overrides={"REMOTE_ADDR": f"192.168.1.{i}"}
+        )
+
+    # Verify locked
+    resp_locked = client.post(
+        "/login",
+        data={"username": target_user, "password": "wrong"},
+        environ_overrides={"REMOTE_ADDR": "192.168.1.100"}
+    )
+    assert b"Account locked, try again later" in resp_locked.data
+
+    # Freeze/fast-forward time to 6 minutes later (lock was 5 minutes)
+    future_time = dt.now(tz.utc) + timedelta(minutes=6)
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tzinfo=None):
+            return future_time
+
+        @classmethod
+        def fromisoformat(cls, s):
+            return dt.fromisoformat(s)
+
+    monkeypatch.setattr(secure.app, "datetime", MockDatetime)
+
+    # First attempt with wrong password after expiry: must report 'Invalid credentials', not 'Account locked'
+    resp_after_expiry = client.post(
+        "/login",
+        data={"username": target_user, "password": "wrong_after_expiry"},
+        environ_overrides={"REMOTE_ADDR": "192.168.1.101"}
+    )
+    assert resp_after_expiry.status_code == 200
+    assert b"Invalid credentials" in resp_after_expiry.data
+    assert b"Account locked, try again later" not in resp_after_expiry.data
