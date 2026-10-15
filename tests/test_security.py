@@ -242,3 +242,15 @@ def test_seed_passwords_not_hardcoded(monkeypatch):
     passwords = get_seed_passwords()
     assert len(passwords["admin"]) >= 16
     assert passwords["admin"] != "admin123"
+
+
+def test_login_page_does_not_contain_credential_hint(client):
+    """
+    UI Hardening:
+    The login page must not reveal credential hints or valid username/password pairs.
+    """
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert b"admin/admin123" not in resp.data
+    assert b"alice/alicepw" not in resp.data
+    assert b"bob/bobpw" not in resp.data
