@@ -100,3 +100,33 @@ def test_unauthenticated_requests_redirect_to_login(client):
         resp = client.get(url, follow_redirects=False)
         assert resp.status_code == 302
         assert "/login" in resp.headers["Location"]
+
+
+def test_account_lockout_after_five_failed_attempts(client):
+    """
+    Account Lockout Defense:
+    Submitting 5 consecutive incorrect passwords for a registered username
+    must trigger an account lock for 5 minutes and display an explicit lockout message.
+    Subsequent attempts (even with valid credentials) must remain locked during the lockout window.
+    """
+    target_user = "bob"
+    # Attempts 1 to 4 should report invalid credentials
+    for i in range(1, 5):
+        resp = client.post("/login", data={"username": target_user, "password": f"wrong_{i}"})
+        assert resp.status_code == 200
+        assert b"Invalid credentials" in resp.data
+
+    # Attempt 5 reaches the threshold: must trigger account lockout
+    resp_lock = client.post("/login", data={"username": target_user, "password": "wrong_5"})
+    assert resp_lock.status_code == 200
+    assert b"Account locked, try again later" in resp_lock.data
+
+    # Immediate attempt with the correct password must still be rejected due to active lock
+    # Note: simulate another IP/client to isolate username lockout from IP-level rate limiting
+    resp_blocked = client.post(
+        "/login",
+        data={"username": target_user, "password": "bobpw"},
+        environ_overrides={"REMOTE_ADDR": "192.168.1.100"}
+    )
+    assert resp_blocked.status_code == 200
+    assert b"Account locked, try again later" in resp_blocked.data
