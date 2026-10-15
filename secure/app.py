@@ -110,16 +110,36 @@ def login():
         db = get_db()
         # FIXED: parameterized query, no string concatenation
         user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        if user and check_password_hash(user["password"], password):
-            session.clear()
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
-            return redirect(url_for("dashboard"))
-        elif user:
-            failed = (user["failed_attempts"] or 0) + 1
-            db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", (failed, user["id"]))
-            db.commit()
-            return render_template("login.html", error="Invalid credentials")
+        if user:
+            # Check if account is currently locked
+            locked_until_str = user["locked_until"]
+            if locked_until_str:
+                try:
+                    locked_until = datetime.fromisoformat(locked_until_str)
+                    if locked_until.tzinfo is None:
+                        locked_until = locked_until.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) < locked_until:
+                        return render_template("login.html", error="Account locked, try again later.")
+                except (ValueError, TypeError):
+                    pass
+
+            if check_password_hash(user["password"], password):
+                session.clear()
+                session["user_id"] = user["id"]
+                session["role"] = user["role"]
+                return redirect(url_for("dashboard"))
+            else:
+                failed = (user["failed_attempts"] or 0) + 1
+                if failed >= 5:
+                    lock_until = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+                    db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?",
+                               (failed, lock_until, user["id"]))
+                    db.commit()
+                    return render_template("login.html", error="Account locked, try again later.")
+                else:
+                    db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", (failed, user["id"]))
+                    db.commit()
+                    return render_template("login.html", error="Invalid credentials")
         return render_template("login.html", error="Invalid credentials")
     return render_template("login.html")
 
