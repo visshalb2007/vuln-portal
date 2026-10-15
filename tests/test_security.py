@@ -39,3 +39,14 @@ def test_idor_non_admin_cannot_view_other_profile(member_client):
     resp_alice = member_client.get("/profile/2")
     assert resp_alice.status_code == 403
     assert b"Forbidden" in resp_alice.data
+
+
+def test_broken_access_control_member_cannot_access_admin_users(member_client):
+    """
+    Vulnerability 3: Missing role check on /admin/users.
+    Authenticated standard member 'bob' requests /admin/users directly.
+    In secure/app.py, @admin_required rejects the request with HTTP 403 Forbidden.
+    """
+    resp = member_client.get("/admin/users")
+    assert resp.status_code == 403
+    assert b"Forbidden" in resp.data
