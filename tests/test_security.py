@@ -23,3 +23,19 @@ def test_sqli_login_bypass_fails(client):
         # Ensure session was not created
         with client.session_transaction() as sess:
             assert "user_id" not in sess
+
+
+def test_idor_non_admin_cannot_view_other_profile(member_client):
+    """
+    Vulnerability 1: Insecure Direct Object Reference (IDOR) on /profile/<id>.
+    Authenticated user 'bob' (id=3, role='member') attempts to view 'admin' profile (id=1).
+    In secure/app.py, ownership/role verification must reject with HTTP 403 Forbidden.
+    """
+    resp = member_client.get("/profile/1")
+    assert resp.status_code == 403
+    assert b"Forbidden" in resp.data
+
+    # Also test another member's profile (alice, id=2)
+    resp_alice = member_client.get("/profile/2")
+    assert resp_alice.status_code == 403
+    assert b"Forbidden" in resp_alice.data
