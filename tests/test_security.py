@@ -50,3 +50,14 @@ def test_broken_access_control_member_cannot_access_admin_users(member_client):
     resp = member_client.get("/admin/users")
     assert resp.status_code == 403
     assert b"Forbidden" in resp.data
+
+
+def test_legitimate_access_member_can_view_own_profile(member_client):
+    """
+    Legitimate Access:
+    Authenticated user 'bob' (id=3) must successfully view his own profile (/profile/3).
+    """
+    resp = member_client.get("/profile/3")
+    assert resp.status_code == 200
+    assert b"Bob Member" in resp.data
+    assert b"bob@club.edu" in resp.data
