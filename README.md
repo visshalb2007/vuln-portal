@@ -50,3 +50,15 @@ chmod +x exploit_demo.sh verify_fix.sh
 3. **Broken access control** on `/admin/users` — only gated by hiding the UI link, not server-side role check
 
 See `docs/vulnerabilities.md` for full detail on each.
+
+## Running Automated Security Tests
+Run the comprehensive regression test suite (covers SQL injection bypass, IDOR, broken access control, 5-minute account lockout, and Flask-Limiter IP throttling):
+```bash
+pytest -v
+```
+
+## Running Static Security Analysis (Bandit)
+Scan `secure/` for security issues and vulnerabilities:
+```bash
+bandit -r secure/ -lll
+```
