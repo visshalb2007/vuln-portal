@@ -17,7 +17,8 @@ DB = os.path.join(os.path.dirname(__file__), "club.db")
 def get_db():
     db = getattr(g, "_db", None)
     if db is None:
-        db = g._db = sqlite3.connect(DB)
+        db_path = app.config.get("DATABASE", DB)
+        db = g._db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
     return db
 
@@ -29,8 +30,9 @@ def close_db(exc):
         db.close()
 
 
-def init_db():
-    db = sqlite3.connect(DB)
+def init_db(db_path=None):
+    target_db = db_path or app.config.get("DATABASE", DB)
+    db = sqlite3.connect(target_db)
     db.executescript("""
     DROP TABLE IF EXISTS users;
     DROP TABLE IF EXISTS events;
