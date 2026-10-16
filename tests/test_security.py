@@ -746,5 +746,95 @@ def test_authenticated_response_cache_control_no_store(app):
     assert auth_resp.headers.get("Pragma") == "no-cache"
 
 
+def test_audit_logging_login_success(client, caplog):
+    """
+    Audit Logging - Login Success:
+    Successful authentication must emit an audit log with username, user_id, and ip,
+    and must never log the user's password.
+    """
+    import logging
+
+    caplog.set_level(logging.INFO)
+    secret_pass = "admin123"
+    resp = client.post("/login", data={"username": "admin", "password": secret_pass})
+    assert resp.status_code == 302
+
+    assert "event=login_success" in caplog.text
+    assert "username=admin" in caplog.text
+    assert "user_id=1" in caplog.text
+    assert secret_pass not in caplog.text
+
+
+def test_audit_logging_login_failure(client, caplog):
+    """
+    Audit Logging - Login Failure:
+    Failed authentication must log an audit failure event without revealing passwords.
+    """
+    import logging
+
+    caplog.set_level(logging.INFO)
+    super_secret_wrong = "super_secret_wrong_pw!"
+    resp = client.post("/login", data={"username": "bob", "password": super_secret_wrong})
+    assert resp.status_code == 200
+
+    assert "event=login_failure" in caplog.text
+    assert "username=bob" in caplog.text
+    assert super_secret_wrong not in caplog.text
+
+
+def test_audit_logging_lockout(client, caplog):
+    """
+    Audit Logging - Account Lockout:
+    Reaching the lockout threshold must emit an audit lockout warning.
+    """
+    import logging
+    from secure.app import limiter
+
+    caplog.set_level(logging.INFO)
+    # Perform 5 failed attempts
+    for i in range(5):
+        limiter.reset()
+        client.post("/login", data={"username": "alice", "password": "wrong"})
+
+    assert "event=lockout" in caplog.text
+    assert "username=alice" in caplog.text
+
+
+def test_audit_logging_403_forbidden(member_client, caplog):
+    """
+    Audit Logging - 403 Forbidden:
+    Unauthorized access attempts must emit a 403 audit warning containing user_id and path.
+    """
+    import logging
+
+    caplog.set_level(logging.INFO)
+    resp = member_client.get("/admin/users")
+    assert resp.status_code == 403
+
+    assert "event=403_forbidden" in caplog.text
+    assert "path=/admin/users" in caplog.text
+
+
+def test_audit_logging_logout(client, caplog):
+    """
+    Audit Logging - Logout:
+    Session termination must emit an audit logout event.
+    """
+    import logging
+
+    caplog.set_level(logging.INFO)
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["username"] = "admin"
+        sess["role"] = "admin"
+
+    resp = client.post("/logout")
+    assert resp.status_code == 302
+
+    assert "event=logout" in caplog.text
+    assert "username=admin" in caplog.text
+
+
+
 
 

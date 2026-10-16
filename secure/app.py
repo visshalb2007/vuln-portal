@@ -8,7 +8,7 @@ Fixes the vulnerabilities present in vulnerable/:
 from flask import Flask, request, session, redirect, url_for, render_template, g, abort, current_app
 from functools import wraps
 from datetime import datetime, timedelta, timezone
-import sqlite3, os
+import sqlite3, os, logging
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -16,6 +16,8 @@ from flask_wtf.csrf import CSRFProtect
 
 from secure.config import Config, TestingConfig
 from secure.db import get_db, close_db, init_db, DB_FALLBACK as DB
+
+audit_logger = logging.getLogger("secure.audit")
 
 DUMMY_PASSWORD_HASH = generate_password_hash("timing_equalization_secret")
 
@@ -144,6 +146,7 @@ def create_app(config=None):
                     session["role"] = user["role"]
                     session["username"] = user["username"]
                     session["_last_active"] = datetime.now(timezone.utc).timestamp()
+                    audit_logger.info("SECURITY AUDIT: event=login_success username=%s user_id=%s ip=%s", user["username"], user["id"], ip_addr)
                     return redirect(url_for("dashboard"))
                 else:
                     failed = ((attempt_row["failed_attempts"] if attempt_row else 0) or 0) + 1
@@ -159,6 +162,7 @@ def create_app(config=None):
                                 "VALUES (?, ?, ?, ?)",
                                 (username, ip_addr, failed, lock_until)
                             )
+                        audit_logger.warning("SECURITY AUDIT: event=lockout username=%s ip=%s", username, ip_addr)
                     else:
                         if attempt_row:
                             db.execute("UPDATE login_attempts SET failed_attempts = ? WHERE id = ?",
@@ -168,18 +172,25 @@ def create_app(config=None):
                                 "INSERT INTO login_attempts (username, ip_address, failed_attempts) VALUES (?, ?, ?)",
                                 (username, ip_addr, failed)
                             )
+                        audit_logger.warning("SECURITY AUDIT: event=login_failure username=%s ip=%s", username, ip_addr)
                     db.commit()
                     return render_template("login.html", error="Invalid credentials")
             elif user and is_locked:
                 check_password_hash(user["password"], password)
+                audit_logger.warning("SECURITY AUDIT: event=lockout username=%s ip=%s", username, ip_addr)
                 return render_template("login.html", error="Invalid credentials")
             else:
                 check_password_hash(DUMMY_PASSWORD_HASH, password)
+                audit_logger.warning("SECURITY AUDIT: event=login_failure username=%s ip=%s", username, ip_addr)
                 return render_template("login.html", error="Invalid credentials")
         return render_template("login.html")
 
     @app.route("/logout", methods=["POST"])
     def logout():
+        user_id = session.get("user_id")
+        username = session.get("username")
+        ip_addr = request.remote_addr or "127.0.0.1"
+        audit_logger.info("SECURITY AUDIT: event=logout username=%s user_id=%s ip=%s", username, user_id, ip_addr)
         session.clear()
         return redirect(url_for("login"))
 
@@ -213,6 +224,9 @@ def create_app(config=None):
 
     @app.errorhandler(403)
     def forbidden(e):
+        user_id = session.get("user_id")
+        ip_addr = request.remote_addr or "127.0.0.1"
+        audit_logger.warning("SECURITY AUDIT: event=403_forbidden user_id=%s path=%s ip=%s", user_id, request.path, ip_addr)
         return render_template("403.html"), 403
 
     @app.errorhandler(429)
