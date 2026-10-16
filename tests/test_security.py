@@ -896,6 +896,80 @@ def test_ui_base_layout_and_accessible_form(client):
     assert b"/* Secure Club Portal Stylesheet" in css_resp.data
 
 
+def test_profile_not_found_returns_404(admin_client):
+    """
+    Profile Route Boundary:
+    When an authenticated administrator queries a non-existent user ID,
+    the application must return HTTP 404 Not Found.
+    """
+    resp = admin_client.get("/profile/99999")
+    assert resp.status_code == 404
+    assert b"User not found" in resp.data
+
+
+def test_full_logout_flow(client):
+    """
+    Logout Flow:
+    Verify authenticating, accessing protected resource, logging out,
+    and verifying post-logout denial on protected resources.
+    """
+    # 1. Login
+    login_resp = client.post("/login", data={"username": "bob", "password": "bobpw"}, follow_redirects=True)
+    assert login_resp.status_code == 200
+    assert b"Club Dashboard" in login_resp.data
+
+    # 2. Access dashboard
+    dash_resp = client.get("/")
+    assert dash_resp.status_code == 200
+
+    # 3. Logout
+    logout_resp = client.post("/logout", follow_redirects=True)
+    assert logout_resp.status_code == 200
+    assert b"Club Portal Login" in logout_resp.data
+
+    # 4. Access dashboard after logout -> redirected to login
+    reaccess_resp = client.get("/", follow_redirects=False)
+    assert reaccess_resp.status_code == 302
+    assert reaccess_resp.headers["Location"].endswith("/login")
+
+
+def test_session_fixation_protection(client):
+    """
+    Session Fixation Defense:
+    Pre-authentication session data and cookies must be cleared/regenerated upon login.
+    """
+    # Establish pre-session state
+    with client.session_transaction() as sess:
+        sess["pre_login_tracker"] = "malicious_fixation_val"
+
+    # Authenticate
+    client.post("/login", data={"username": "admin", "password": "admin123"})
+
+    # Verify pre-session key is wiped out
+    with client.session_transaction() as sess:
+        assert "pre_login_tracker" not in sess
+        assert sess.get("user_id") == 1
+        assert sess.get("username") == "admin"
+
+
+@pytest.mark.parametrize("route", [
+    "/",
+    "/profile/1",
+    "/profile/3",
+    "/admin/users",
+])
+def test_unauthenticated_routes_redirect_to_login(app, route):
+    """
+    Access Control Baseline:
+    All protected endpoints must redirect unauthenticated requests to /login with HTTP 302.
+    """
+    unauth_client = app.test_client()
+    resp = unauth_client.get(route, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/login")
+
+
+
 
 
 
