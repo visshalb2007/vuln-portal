@@ -219,12 +219,21 @@ def create_app(config=None):
     def ratelimit_handler(e):
         return render_template("login.html", error="Too many requests. Rate limit exceeded, try again later."), 429
 
-    # ---------- Bonus hardening ----------
+    # ---------- Bonus hardening: Security Headers ----------
     @app.after_request
     def set_security_headers(resp):
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Content-Security-Policy"] = "default-src 'self'"
+        resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        resp.headers["Content-Security-Policy"] = (
+            "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
+        if "user_id" in session:
+            resp.headers["Cache-Control"] = "no-store"
+            resp.headers["Pragma"] = "no-cache"
         return resp
 
     return app

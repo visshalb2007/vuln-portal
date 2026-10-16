@@ -2,6 +2,7 @@
 Automated Security Regression Tests for College Club Portal (secure/app.py).
 Verifies fixes against SQLi, IDOR, Broken Access Control, and lockout/rate limits.
 """
+import pytest
 
 
 def test_sqli_login_bypass_fails(client):
@@ -688,6 +689,62 @@ def test_demoted_admin_loses_admin_privileges_immediately(app, client):
     resp = client.get("/admin/users")
     assert resp.status_code == 403
     assert b"Forbidden" in resp.data
+
+
+@pytest.mark.parametrize("header,expected_value", [
+    ("X-Content-Type-Options", "nosniff"),
+    ("X-Frame-Options", "DENY"),
+    ("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
+    ("Referrer-Policy", "strict-origin-when-cross-origin"),
+    ("Permissions-Policy", "geolocation=(), microphone=(), camera=()"),
+    ("Cross-Origin-Opener-Policy", "same-origin"),
+])
+def test_security_headers_present(client, header, expected_value):
+    """
+    Security Headers:
+    Ensure every HTTP response includes modern hardening headers.
+    """
+    resp = client.get("/login")
+    assert resp.headers.get(header) == expected_value
+
+
+def test_tightened_content_security_policy(client):
+    """
+    Content Security Policy:
+    Verify CSP contains default-src, frame-ancestors 'none', base-uri 'self', and form-action 'self'.
+    """
+    resp = client.get("/login")
+    csp = resp.headers.get("Content-Security-Policy", "")
+    assert "default-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert "base-uri 'self'" in csp
+    assert "form-action 'self'" in csp
+
+
+def test_authenticated_response_cache_control_no_store(app):
+    """
+    Cache-Control Hardening:
+    Authenticated responses must serve Cache-Control: no-store to prevent sensitive data leakage.
+    Unauthenticated public responses (e.g. login) do not force no-store.
+    """
+    client = app.test_client()
+
+    # Unauthenticated response
+    unauth_resp = client.get("/login")
+    assert unauth_resp.status_code == 200
+    assert unauth_resp.headers.get("Cache-Control") != "no-store"
+
+    # Authenticated response
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["username"] = "admin"
+        sess["role"] = "admin"
+
+    auth_resp = client.get("/")
+    assert auth_resp.status_code == 200
+    assert auth_resp.headers.get("Cache-Control") == "no-store"
+    assert auth_resp.headers.get("Pragma") == "no-cache"
+
 
 
 
