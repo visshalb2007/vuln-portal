@@ -874,6 +874,29 @@ def test_login_input_boundary_validation(client, username, password, expected_st
     assert resp.status_code == expected_status
 
 
+def test_ui_base_layout_and_accessible_form(client):
+    """
+    UI & Accessibility:
+    Verify that templates extend base.html, include link to /static/style.css,
+    and render accessible form labels with matching input IDs.
+    """
+    # 1. Login page contains stylesheet link and accessible labels
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8")
+    assert "/static/style.css" in html
+    assert '<label for="username">Username</label>' in html
+    assert 'id="username"' in html
+    assert '<label for="password">Password</label>' in html
+    assert 'id="password"' in html
+
+    # 2. Static stylesheet is successfully served
+    css_resp = client.get("/static/style.css")
+    assert css_resp.status_code == 200
+    assert b"/* Secure Club Portal Stylesheet" in css_resp.data
+
+
+
 
 
 
