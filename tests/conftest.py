@@ -1,13 +1,15 @@
 import os
 import sys
 import tempfile
+
 import pytest
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 os.environ.setdefault("TESTING", "True")
 
-from secure.app import app as secure_app, init_db, limiter
+from secure.app import app as secure_app
+from secure.app import init_db, limiter
 
 
 @pytest.fixture(autouse=True)

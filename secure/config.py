@@ -14,7 +14,9 @@ class Config:
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() in ("true", "1")
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_NAME = "__Host-session" if os.environ.get("SESSION_COOKIE_SECURE", "true").lower() in ("true", "1") else "session"
+    SESSION_COOKIE_NAME = (
+        "__Host-session" if os.environ.get("SESSION_COOKIE_SECURE", "true").lower() in ("true", "1") else "session"
+    )
 
     @classmethod
     def check_valid(cls, config_dict):

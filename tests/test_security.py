@@ -215,6 +215,7 @@ def test_missing_secret_key_fails_fast_in_production():
     and never fall back to a hardcoded insecure default key.
     """
     import pytest
+
     from secure.config import Config
 
     with pytest.raises(RuntimeError, match="SECRET_KEY environment variable is required"):
@@ -279,7 +280,10 @@ def test_lockout_expiry_resets_failed_attempts(client, monkeypatch, app):
     When an account lock expires, failed_attempts must reset to 0 so that a single
     wrong password after expiry does not immediately re-lock the account.
     """
-    from datetime import datetime as dt, timedelta, timezone as tz
+    from datetime import datetime as dt
+    from datetime import timedelta
+    from datetime import timezone as tz
+
     import secure.app
 
     target_user = "bob"
@@ -413,7 +417,10 @@ def test_csrf_protection_post_without_token_returns_400():
     When WTF_CSRF_ENABLED is active, any POST request submitted without a valid
     CSRF token must be rejected with HTTP 400 Bad Request.
     """
-    import re, os, tempfile
+    import os
+    import re
+    import tempfile
+
     from secure.app import create_app
     from secure.db import init_db
 
@@ -499,6 +506,7 @@ def test_logout_requires_csrf_when_enabled():
     """
     import os
     import tempfile
+
     from secure.app import create_app
     from secure.config import Config
 
@@ -532,6 +540,7 @@ def test_session_configuration():
     Verify 30-minute lifetime, HttpOnly, SameSite=Lax, and __Host- prefix in production.
     """
     from datetime import timedelta
+
     from secure.config import Config, TestingConfig
 
     assert Config.PERMANENT_SESSION_LIFETIME == timedelta(minutes=30)
@@ -596,6 +605,7 @@ def test_session_cookie_host_prefix_in_production(monkeypatch):
     """
     import os
     import tempfile
+
     from secure.app import create_app
     from secure.config import Config
 
@@ -788,6 +798,7 @@ def test_audit_logging_lockout(client, caplog):
     Reaching the lockout threshold must emit an audit lockout warning.
     """
     import logging
+
     from secure.app import limiter
 
     caplog.set_level(logging.INFO)

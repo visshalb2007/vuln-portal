@@ -5,17 +5,20 @@ Fixes the vulnerabilities present in vulnerable/:
   2. SQL Injection on /login      -> parameterized queries
   3. Broken access control /admin -> server-side role check (decorator)
 """
-from flask import Flask, request, session, redirect, url_for, render_template, g, abort, current_app
-from functools import wraps
+import logging
+import os
 from datetime import datetime, timedelta, timezone
-import sqlite3, os, logging
-from werkzeug.security import check_password_hash, generate_password_hash
+from functools import wraps
+
+from flask import Flask, abort, g, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from secure.config import Config, TestingConfig
-from secure.db import get_db, close_db, init_db, DB_FALLBACK as DB
+from secure.db import DB_FALLBACK as DB
+from secure.db import close_db, get_db, init_db
 
 audit_logger = logging.getLogger("secure.audit")
 
@@ -156,7 +159,12 @@ def create_app(config=None):
                     session["role"] = user["role"]
                     session["username"] = user["username"]
                     session["_last_active"] = datetime.now(timezone.utc).timestamp()
-                    audit_logger.info("SECURITY AUDIT: event=login_success username=%s user_id=%s ip=%s", user["username"], user["id"], ip_addr)
+                    audit_logger.info(
+                        "SECURITY AUDIT: event=login_success username=%s user_id=%s ip=%s",
+                        user["username"],
+                        user["id"],
+                        ip_addr,
+                    )
                     return redirect(url_for("dashboard"))
                 else:
                     failed = ((attempt_row["failed_attempts"] if attempt_row else 0) or 0) + 1
@@ -236,7 +244,12 @@ def create_app(config=None):
     def forbidden(e):
         user_id = session.get("user_id")
         ip_addr = request.remote_addr or "127.0.0.1"
-        audit_logger.warning("SECURITY AUDIT: event=403_forbidden user_id=%s path=%s ip=%s", user_id, request.path, ip_addr)
+        audit_logger.warning(
+            "SECURITY AUDIT: event=403_forbidden user_id=%s path=%s ip=%s",
+            user_id,
+            request.path,
+            ip_addr,
+        )
         return render_template("403.html"), 403
 
     @app.errorhandler(429)

@@ -1,6 +1,8 @@
 import os
+import secrets
 import sqlite3
-from flask import g, current_app
+
+from flask import current_app, g
 
 DB_FALLBACK = os.path.join(os.path.dirname(__file__), "club.db")
 
@@ -47,9 +49,6 @@ def ensure_schema(db):
     );
     """)
     db.commit()
-
-
-import secrets
 
 
 def get_seed_passwords():
@@ -121,12 +120,18 @@ def init_db(db_path=None):
 
     passwords = get_seed_passwords()
     from werkzeug.security import generate_password_hash
-    db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("admin", generate_password_hash(passwords["admin"]), "admin", "Club Admin", "admin@club.edu", "9999999999"))
-    db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("alice", generate_password_hash(passwords["alice"]), "member", "Alice Member", "alice@club.edu", "9000000001"))
-    db.execute("INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
-               ("bob", generate_password_hash(passwords["bob"]), "member", "Bob Member", "bob@club.edu", "9000000002"))
+    db.execute(
+        "INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
+        ("admin", generate_password_hash(passwords["admin"]), "admin", "Club Admin", "admin@club.edu", "9999999999"),
+    )
+    db.execute(
+        "INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
+        ("alice", generate_password_hash(passwords["alice"]), "member", "Alice Member", "alice@club.edu", "9000000001"),
+    )
+    db.execute(
+        "INSERT INTO users (username,password,role,full_name,email,phone) VALUES (?,?,?,?,?,?)",
+        ("bob", generate_password_hash(passwords["bob"]), "member", "Bob Member", "bob@club.edu", "9000000002"),
+    )
     db.execute("INSERT INTO events (title,description,created_by) VALUES (?,?,?)",
                ("Hackathon 2026", "24hr coding event", 1))
     ensure_schema(db)

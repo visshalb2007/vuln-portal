@@ -5,10 +5,12 @@ remain exploitable for educational and demonstration purposes.
 """
 import os
 import tempfile
+
 import pytest
 
-from vulnerable.app import app as vuln_app, init_db as init_vuln_db
 import vulnerable.app as vuln_module
+from vulnerable.app import app as vuln_app
+from vulnerable.app import init_db as init_vuln_db
 
 
 @pytest.fixture
