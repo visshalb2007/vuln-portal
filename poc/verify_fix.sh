@@ -8,7 +8,7 @@ trap 'rm -f "$COOKIE_JAR"' EXIT
 echo "=== [SECURE APP] Verifying Vulnerability Fixes ==="
 
 get_csrf() {
-  curl -s -c "$COOKIE_JAR" "$BASE/login" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p'
+  curl -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$BASE/login" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p'
 }
 
 # 1. SQL Injection blocked
@@ -27,6 +27,7 @@ echo "[+] PASSED: SQL Injection rejected (HTTP $STATUS)"
 
 # 2. IDOR blocked
 echo "[2/3] Verifying IDOR on /profile/1 is blocked (403)..."
+rm -f "$COOKIE_JAR"
 # Authenticate legitimately as bob
 CSRF_TOKEN=$(get_csrf)
 LOGIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST "$BASE/login" \

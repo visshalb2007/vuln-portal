@@ -58,16 +58,43 @@ def get_seed_passwords():
     except RuntimeError:
         pass
 
-    admin_pw = os.environ.get("ADMIN_PASSWORD") or seed_cfg.get("admin") or secrets.token_urlsafe(16)
-    alice_pw = os.environ.get("ALICE_PASSWORD") or seed_cfg.get("alice") or secrets.token_urlsafe(16)
-    bob_pw = os.environ.get("BOB_PASSWORD") or seed_cfg.get("bob") or secrets.token_urlsafe(16)
+    admin_pw = (
+        os.environ.get("SEED_ADMIN_PASSWORD")
+        or os.environ.get("ADMIN_PASSWORD")
+        or seed_cfg.get("admin")
+        or secrets.token_urlsafe(16)
+    )
+    alice_pw = (
+        os.environ.get("SEED_ALICE_PASSWORD")
+        or os.environ.get("ALICE_PASSWORD")
+        or seed_cfg.get("alice")
+        or secrets.token_urlsafe(16)
+    )
+    bob_pw = (
+        os.environ.get("SEED_BOB_PASSWORD")
+        or os.environ.get("BOB_PASSWORD")
+        or seed_cfg.get("bob")
+        or secrets.token_urlsafe(16)
+    )
 
     generated = []
-    if not os.environ.get("ADMIN_PASSWORD") and not seed_cfg.get("admin"):
+    if (
+        not os.environ.get("SEED_ADMIN_PASSWORD")
+        and not os.environ.get("ADMIN_PASSWORD")
+        and not seed_cfg.get("admin")
+    ):
         generated.append(f"  admin: {admin_pw}")
-    if not os.environ.get("ALICE_PASSWORD") and not seed_cfg.get("alice"):
+    if (
+        not os.environ.get("SEED_ALICE_PASSWORD")
+        and not os.environ.get("ALICE_PASSWORD")
+        and not seed_cfg.get("alice")
+    ):
         generated.append(f"  alice: {alice_pw}")
-    if not os.environ.get("BOB_PASSWORD") and not seed_cfg.get("bob"):
+    if (
+        not os.environ.get("SEED_BOB_PASSWORD")
+        and not os.environ.get("BOB_PASSWORD")
+        and not seed_cfg.get("bob")
+    ):
         generated.append(f"  bob:   {bob_pw}")
 
     if generated:
