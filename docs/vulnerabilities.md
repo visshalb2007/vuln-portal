@@ -52,3 +52,19 @@ build.
 `session["role"] == "admin"` server-side and returns `403` otherwise. Also
 stopped returning password hashes in the admin view entirely (defense in
 depth / least privilege on data exposure).
+
+---
+
+## 4. Unthrottled Brute-Force & Credential Stuffing
+**Location:** `vulnerable/app.py`, route `/login`
+
+**Root cause:** The endpoint accepts infinite sequential login attempts per IP
+and per user account with no rate limits, delay, or lockout mechanism.
+
+**Impact:** An attacker can perform automated high-speed dictionary attacks or
+credential stuffing against known usernames until valid passwords are breached.
+
+**Fix (secure/app.py):** Implemented a defense-in-depth throttling architecture:
+1. `Flask-Limiter` throttling at 5 requests/minute per IP address returning `429 Too Many Requests`.
+2. DoS-resistant lockout mechanism tracked per `(username, ip_address)` pair with exponential backoff (starting at 5 minutes after 5 consecutive failures), preventing attackers from locking out legitimate users across other IPs.
+3. Timing equalization dummy hash and uniform error messages (`Invalid credentials`) to prevent username enumeration.
