@@ -459,3 +459,68 @@ def test_csrf_protection_post_without_token_returns_400():
                 os.remove(db_path)
             except OSError:
                 pass
+
+
+def test_logout_post_only(client):
+    """
+    Logout Method Restriction:
+    GET /logout must return HTTP 405 (Method Not Allowed) to prevent cross-site logout via image/link tags.
+    POST /logout must succeed, clearing the session and redirecting to /login.
+    """
+    # 1. GET /logout must return 405
+    get_resp = client.get("/logout")
+    assert get_resp.status_code == 405
+
+    # 2. Simulate logged in user
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["username"] = "admin"
+        sess["role"] = "admin"
+
+    # Verify session is active
+    dash_resp = client.get("/")
+    assert dash_resp.status_code == 200
+
+    # 3. POST /logout must redirect to login
+    post_resp = client.post("/logout", follow_redirects=False)
+    assert post_resp.status_code == 302
+    assert post_resp.headers["Location"].endswith("/login")
+
+    # 4. Verify session was cleared
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
+
+
+def test_logout_requires_csrf_when_enabled():
+    """
+    CSRF on Logout:
+    POST /logout without a valid CSRF token must return 400 Bad Request when CSRF is enabled.
+    """
+    import os
+    import tempfile
+    from secure.app import create_app
+    from secure.config import Config
+
+    db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(db_fd)
+
+    class LogoutCsrfConfig(Config):
+        TESTING = True
+        WTF_CSRF_ENABLED = True
+        DATABASE = db_path
+        SECRET_KEY = "test-secret-key-32-bytes-long!"
+
+    try:
+        app = create_app(LogoutCsrfConfig)
+        client = app.test_client()
+
+        # POST without CSRF token must fail with 400
+        resp_missing = client.post("/logout")
+        assert resp_missing.status_code == 400
+    finally:
+        if os.path.exists(db_path):
+            try:
+                os.remove(db_path)
+            except OSError:
+                pass
+

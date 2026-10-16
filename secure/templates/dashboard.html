@@ -3,7 +3,7 @@
 <body>
 <h2>Club Dashboard</h2>
 <p>Role: {{ role }}</p>
-<p><a href="/profile/{{ my_id }}">My Profile</a> {% if role == 'admin' %}| <a href="/admin/users">Admin Users</a>{% endif %} | <a href="/logout">Logout</a></p>
+<p><a href="/profile/{{ my_id }}">My Profile</a> {% if role == 'admin' %}| <a href="/admin/users">Admin Users</a>{% endif %} | <form method="post" action="/logout" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Logout</button></form></p>
 <h3>Events</h3>
 <ul>
 {% for e in events %}
