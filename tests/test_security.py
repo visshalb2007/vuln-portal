@@ -524,3 +524,104 @@ def test_logout_requires_csrf_when_enabled():
             except OSError:
                 pass
 
+
+def test_session_configuration():
+    """
+    Session Configuration:
+    Verify 30-minute lifetime, HttpOnly, SameSite=Lax, and __Host- prefix in production.
+    """
+    from datetime import timedelta
+    from secure.config import Config, TestingConfig
+
+    assert Config.PERMANENT_SESSION_LIFETIME == timedelta(minutes=30)
+    assert Config.SESSION_COOKIE_HTTPONLY is True
+    assert Config.SESSION_COOKIE_SAMESITE == "Lax"
+    assert TestingConfig.SESSION_COOKIE_NAME == "session"
+    assert TestingConfig.SESSION_COOKIE_SECURE is False
+
+
+def test_session_idle_timeout_expires(client):
+    """
+    Session Expiry:
+    A session inactive for longer than PERMANENT_SESSION_LIFETIME (30 min) must expire
+    and redirect unauthenticated requests to /login.
+    """
+    from datetime import datetime, timezone
+
+    # Set up session with an expired last-active timestamp (> 1800 seconds ago)
+    now = datetime.now(timezone.utc).timestamp()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["username"] = "admin"
+        sess["role"] = "admin"
+        sess["_last_active"] = now - 1801
+
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/login")
+
+    # Session must be completely cleared
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
+
+
+def test_session_idle_timeout_active_within_window(client):
+    """
+    Session Continuity:
+    Requests within the 30-minute idle window must succeed and refresh the active timestamp.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).timestamp()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["username"] = "admin"
+        sess["role"] = "admin"
+        sess["_last_active"] = now - 300  # 5 minutes ago
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+    with client.session_transaction() as sess:
+        assert sess.get("user_id") == 1
+        assert sess.get("_last_active") >= now - 5
+
+
+def test_session_cookie_host_prefix_in_production(monkeypatch):
+    """
+    Cookie Security:
+    In production mode with SESSION_COOKIE_SECURE enabled, SESSION_COOKIE_NAME
+    must use the RFC 6265bis __Host- prefix.
+    """
+    import os
+    import tempfile
+    from secure.app import create_app
+    from secure.config import Config
+
+    db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(db_fd)
+
+    monkeypatch.setenv("SECRET_KEY", "prod-secret-key-at-least-32-bytes!!")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+
+    class ProdCookieConfig(Config):
+        TESTING = False
+        DATABASE = db_path
+        SECRET_KEY = "prod-secret-key-at-least-32-bytes!!"
+        SESSION_COOKIE_SECURE = True
+        SESSION_COOKIE_NAME = "__Host-session"
+
+    try:
+        prod_app = create_app(ProdCookieConfig)
+        assert prod_app.config["SESSION_COOKIE_NAME"] == "__Host-session"
+        assert prod_app.config["SESSION_COOKIE_SECURE"] is True
+        assert prod_app.config["SESSION_COOKIE_HTTPONLY"] is True
+        assert prod_app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+    finally:
+        if os.path.exists(db_path):
+            try:
+                os.remove(db_path)
+            except OSError:
+                pass
+
+

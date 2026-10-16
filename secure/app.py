@@ -71,6 +71,19 @@ def create_app(config=None):
     limiter.init_app(app)
     app.teardown_appcontext(close_db)
 
+    @app.before_request
+    def check_idle_timeout():
+        if "user_id" in session:
+            now = datetime.now(timezone.utc).timestamp()
+            last_active = session.get("_last_active")
+            max_idle = app.permanent_session_lifetime.total_seconds()
+            if last_active and (now - last_active > max_idle):
+                session.clear()
+                if request.endpoint and request.endpoint not in ("login", "static"):
+                    return redirect(url_for("login"))
+            else:
+                session["_last_active"] = now
+
     # ---------- FIX #2: parameterized query + hashed password check ----------
     # BONUS: Rate limiting on login attempts (5 per minute per IP)
     @app.route("/login", methods=["GET", "POST"])
@@ -112,8 +125,11 @@ def create_app(config=None):
                                    (attempt_row["id"],))
                         db.commit()
                     session.clear()
+                    session.permanent = True
                     session["user_id"] = user["id"]
                     session["role"] = user["role"]
+                    session["username"] = user["username"]
+                    session["_last_active"] = datetime.now(timezone.utc).timestamp()
                     return redirect(url_for("dashboard"))
                 else:
                     failed = ((attempt_row["failed_attempts"] if attempt_row else 0) or 0) + 1
