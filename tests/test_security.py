@@ -625,3 +625,69 @@ def test_session_cookie_host_prefix_in_production(monkeypatch):
                 pass
 
 
+def test_deleted_user_loses_access_immediately(app, client):
+    """
+    Authorization Invalidation:
+    If a user is deleted from the DB while their session cookie is still valid,
+    the app must re-validate against the DB on the next request, clear the session,
+    and redirect to /login.
+    """
+    from secure.db import get_db
+
+    # User bob (id=3) is logged in
+    with client.session_transaction() as sess:
+        sess["user_id"] = 3
+        sess["username"] = "bob"
+        sess["role"] = "member"
+
+    # Verify access works prior to deletion
+    resp = client.get("/profile/3")
+    assert resp.status_code == 200
+
+    # Delete bob from the database
+    with app.app_context():
+        db = get_db()
+        db.execute("DELETE FROM users WHERE id = 3")
+        db.commit()
+
+    # Bob's next request must be rejected and redirected to /login
+    resp = client.get("/profile/3", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/login")
+
+    # Session must be cleared
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
+
+
+def test_demoted_admin_loses_admin_privileges_immediately(app, client):
+    """
+    Role Re-validation:
+    If an admin is demoted to a regular member in the DB while possessing an active session,
+    the app must not trust the cookie claim and must deny access to /admin/users with HTTP 403.
+    """
+    from secure.db import get_db
+
+    # Admin (id=1) is logged in
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["username"] = "admin"
+        sess["role"] = "admin"
+
+    # Verify admin access works prior to demotion
+    resp = client.get("/admin/users")
+    assert resp.status_code == 200
+
+    # Demote admin to member in DB
+    with app.app_context():
+        db = get_db()
+        db.execute("UPDATE users SET role = 'member' WHERE id = 1")
+        db.commit()
+
+    # Next request to /admin/users must return 403 Forbidden
+    resp = client.get("/admin/users")
+    assert resp.status_code == 403
+    assert b"Forbidden" in resp.data
+
+
+

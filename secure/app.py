@@ -33,6 +33,13 @@ def login_required(f):
     def wrapper(*a, **kw):
         if "user_id" not in session:
             return redirect(url_for("login"))
+        db = get_db()
+        user = db.execute("SELECT id, username, role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        if not user:
+            session.clear()
+            return redirect(url_for("login"))
+        session["role"] = user["role"]
+        g.user = user
         return f(*a, **kw)
     return wrapper
 
@@ -42,7 +49,14 @@ def admin_required(f):
     def wrapper(*a, **kw):
         if "user_id" not in session:
             return redirect(url_for("login"))
-        if session.get("role") != "admin":
+        db = get_db()
+        user = db.execute("SELECT id, username, role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        if not user:
+            session.clear()
+            return redirect(url_for("login"))
+        session["role"] = user["role"]
+        g.user = user
+        if user["role"] != "admin":
             abort(403)
         return f(*a, **kw)
     return wrapper
