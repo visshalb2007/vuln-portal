@@ -835,6 +835,46 @@ def test_audit_logging_logout(client, caplog):
     assert "username=admin" in caplog.text
 
 
+def test_login_input_validation_missing_fields(client):
+    """
+    Input Validation:
+    Missing username or password fields must return HTTP 400 Bad Request
+    instead of raising unhandled KeyError exceptions.
+    """
+    # Missing username
+    resp_no_user = client.post("/login", data={"password": "password123"})
+    assert resp_no_user.status_code == 400
+    assert b"Username and password are required" in resp_no_user.data
+
+    # Missing password
+    resp_no_pass = client.post("/login", data={"username": "admin"})
+    assert resp_no_pass.status_code == 400
+    assert b"Username and password are required" in resp_no_pass.data
+
+
+@pytest.mark.parametrize("username,password,expected_status", [
+    ("", "valid_password", 400),
+    ("admin", "", 400),
+    ("a" * 65, "valid_password", 400),
+    ("admin", "b" * 129, 400),
+    ("a" * 64, "valid_password", 200),
+    ("admin", "b" * 128, 200),
+    ("a", "b", 200),
+])
+def test_login_input_boundary_validation(client, username, password, expected_status):
+    """
+    Input Boundary Testing:
+    Tests lower (1 char) and upper (64 char username, 128 char password) boundaries.
+    Out-of-bound inputs return 400, while boundary inputs are safely evaluated by authentication logic.
+    """
+    from secure.app import limiter
+    limiter.reset()
+
+    resp = client.post("/login", data={"username": username, "password": password})
+    assert resp.status_code == expected_status
+
+
+
 
 
 

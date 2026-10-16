@@ -106,8 +106,18 @@ def create_app(config=None):
     @limiter.limit("5 per minute", methods=["POST"])
     def login():
         if request.method == "POST":
-            username = request.form["username"]
-            password = request.form["password"]
+            username = request.form.get("username")
+            password = request.form.get("password")
+
+            if username is None or password is None:
+                return render_template("login.html", error="Username and password are required"), 400
+
+            if not isinstance(username, str) or not isinstance(password, str):
+                return render_template("login.html", error="Invalid input type"), 400
+
+            if not (1 <= len(username) <= 64) or not (1 <= len(password) <= 128):
+                return render_template("login.html", error="Invalid input length"), 400
+
             ip_addr = request.remote_addr or "127.0.0.1"
             db = get_db()
             user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
