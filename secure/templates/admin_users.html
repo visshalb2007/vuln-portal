@@ -1,12 +1,18 @@
-<!DOCTYPE html>
-<html><head><title>Admin - Users</title></head>
-<body>
+{% extends "base.html" %}
+
+{% block title %}Admin - Users{% endblock %}
+
+{% block content %}
 <h2>All Users (Admin)</h2>
-<table border="1">
-<tr><th>ID</th><th>Username</th><th>Role</th><th>Email</th></tr>
+<table>
+<thead>
+  <tr><th>ID</th><th>Username</th><th>Role</th><th>Email</th></tr>
+</thead>
+<tbody>
 {% for u in users %}
-<tr><td>{{ u['id'] }}</td><td>{{ u['username'] }}</td><td>{{ u['role'] }}</td><td>{{ u['email'] }}</td></tr>
+  <tr><td>{{ u['id'] }}</td><td>{{ u['username'] }}</td><td>{{ u['role'] }}</td><td>{{ u['email'] }}</td></tr>
 {% endfor %}
+</tbody>
 </table>
 <p><a href="/">Back</a></p>
-</body></html>
+{% endblock %}

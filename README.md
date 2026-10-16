@@ -2,14 +2,13 @@
 
 <img width="1617" height="405" alt="image" src="https://github.com/user-attachments/assets/a6b680e7-87f1-402b-b633-6c25c14e6a7a" />
 
-
 **A Full-Spectrum Cyber Defense Benchmarking Environment & Dual-State Vulnerability Lab**
 
 [![Security CI](https://github.com/visshalb2007/vuln-portal/actions/workflows/security-ci.yml/badge.svg)](https://github.com/visshalb2007/vuln-portal/actions/workflows/security-ci.yml)
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
+[![Coverage: >=90%](https://img.shields.io/badge/coverage-%E2%89%A590%25-brightgreen.svg)](https://github.com/visshalb2007/vuln-portal)
+![Python 3.10 | 3.11 | 3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)
 ![Flask 3.x](https://img.shields.io/badge/flask-3.1-000000.svg)
-![Tests: 10 Passed](https://img.shields.io/badge/tests-10%20passed-brightgreen.svg)
-![Bandit SAST](https://img.shields.io/badge/bandit-0%20high%20findings-success.svg)
+![Bandit SAST](https://img.shields.io/badge/bandit-passing-success.svg)
 ![OWASP Top 10](https://img.shields.io/badge/OWASP-A01%20%7C%20A03%20%7C%20A07-orange.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -29,7 +28,7 @@
 **Trust Issues** is an advanced hands-on cybersecurity laboratory modeling a real-world web application across two parallel architectural states:
 
 1. **`vulnerable/` (The Attack Target)**: A realistic baseline application suffering from pervasive authorization flaws, unparameterized data persistence, plaintext credential storage, and total absence of rate throttling.
-2. **`secure/` (The Hardened Baseline)**: An enterprise-grade, defense-in-depth remediation featuring server-side role validation, parameterized data queries, cryptographic password hashing, strict session isolation, automated account lockouts, IP-level rate limiting, and HTTP security headers.
+2. **`secure/` (The Hardened Baseline)**: A hardened, defense-in-depth remediation featuring server-side role validation, parameterized data queries, cryptographic password hashing, strict session isolation, automated account lockouts, IP-level rate limiting, and HTTP security headers.
 
 Accompanied by a formal **STRIDE Threat Model**, an **Automated Pytest Security Regression Suite**, **curl-based exploit PoCs**, and a **GitHub Actions DevSecOps CI Pipeline** running automated SAST (Bandit) scans.
 
@@ -91,7 +90,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Install all runtime, test, and security dependencies
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 3. Launching Applications
@@ -115,11 +114,39 @@ python app.py
 
 ---
 
+## Configuration & Environment Variables
+
+The hardened baseline application (`secure/`) is managed through `secure/config.py` and supports the following environment variables:
+
+| Variable | Description | Default | Production Requirement |
+|---|---|---|---|
+| `SECRET_KEY` | Cryptographic secret for signing session cookies and CSRF tokens. | None | **Mandatory** (app fails fast at startup if missing in non-testing mode). |
+| `DATABASE` | File path to the SQLite database. | `secure/club.db` | Optional |
+| `RATELIMIT_STORAGE_URI` | Storage backend URI for `Flask-Limiter` throttling. | `memory://` | Optional (e.g. `redis://localhost:6379/0` for distributed workers) |
+| `SESSION_COOKIE_SECURE` | Enforces the `Secure` flag on session cookies. | `true` | Optional (`true` in production, `false` for local HTTP testing) |
+| `SEED_ADMIN_PASSWORD` | Seed password for the initialized `admin` user account. | Randomly generated | Optional (read from env or generated randomly) |
+| `SEED_ALICE_PASSWORD` | Seed password for the initialized `alice` user account. | Randomly generated | Optional (read from env or generated randomly) |
+| `SEED_BOB_PASSWORD` | Seed password for the initialized `bob` user account. | Randomly generated | Optional (read from env or generated randomly) |
+
+---
+
+## Security Design Decisions
+
+1. **Fail-Fast Configuration**: In production (`TESTING=False`), the application strictly refuses to start without a valid `SECRET_KEY`, avoiding fallback to insecure hardcoded defaults.
+2. **Anti-Enumeration Protection**: All credential failures (unknown username, wrong password, or locked account) return identical HTTP 200 responses with the message `Invalid credentials`. Unknown usernames trigger dummy password hashing to neutralize timing side-channels.
+3. **DoS-Resistant Account Lockout**: Lockout thresholds (5 failed attempts) and exponential backoff timers are tracked on `(username, ip_address)` composite keys, preventing attackers from executing denial-of-service lockouts against victims from external IPs.
+4. **Request-Level Authorization Re-Validation**: The `@login_required` and `@admin_required` decorators query the database on every request to confirm user existence and active role, immediately revoking access if an account is demoted or deleted.
+5. **CSRF Protection & POST-Only Logout**: State-changing endpoints are protected via `Flask-WTF` `CSRFProtect`. The `/logout` route accepts only POST requests containing valid CSRF tokens to prevent cross-site logout abuse.
+6. **Modern Cookie & Header Hardening**: Session cookies utilize RFC 6265bis `__Host-` prefixes in production, strict 30-minute idle timeouts, `HttpOnly`, `SameSite=Lax`, and complete security headers (`Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin`, tightened `Content-Security-Policy`, and `Cache-Control: no-store` on authenticated views).
+7. **Structured Security Audit Logging**: Sensitive events (successful authentications, failed logins, account lockouts, HTTP 403 access rejections, and logouts) are logged with user identifiers and IP addresses without ever logging plain passwords.
+
+---
+
 ## Seed Credentials & Role Hierarchy
 
-Both environments are pre-seeded with the following test credentials:
+Both environments support pre-seeded test credentials (in `TestingConfig` or configurable via environment variables):
 
-| Username | Password | Role | User ID | Permitted Surfaces (Secure) |
+| Username | Default Password | Role | User ID | Permitted Surfaces (Secure) |
 |---|---|:---:|:---:|---|
 | `admin` | `admin123` | `admin` | `1` | Full administrative access, `/admin/users`, all member profiles, dashboard |
 | `alice` | `alicepw` | `member` | `2` | Dashboard, own profile (`/profile/2`) |
@@ -130,33 +157,44 @@ Both environments are pre-seeded with the following test credentials:
 ## Automated Testing & Verification
 
 ### 1. Pytest Automated Regression Suite
-The test suite in [`tests/test_security.py`](tests/test_security.py) executes 10 comprehensive security regression tests using isolated SQLite test database fixtures:
+The test suite in [`tests/test_security.py`](tests/test_security.py) and [`tests/test_vulnerable.py`](tests/test_vulnerable.py) executes 59 automated tests with a `>= 90%` code coverage gate:
 
 ```bash
-pytest -v
+pytest -v --cov=secure --cov-fail-under=90
 ```
 
-**Test Coverage Summary:**
-- `test_sqli_login_bypass_fails`: Verifies SQL injection payloads (`admin' --`, `' OR '1'='1`) fail to authenticate.
-- `test_idor_non_admin_cannot_view_other_profile`: Verifies member `bob` receives `403 Forbidden` attempting to access `/profile/1` or `/profile/2`.
-- `test_broken_access_control_member_cannot_access_admin_users`: Verifies member `bob` receives `403 Forbidden` on `/admin/users`.
-- `test_legitimate_access_member_can_view_own_profile`: Verifies `bob` successfully accesses `/profile/3`.
-- `test_legitimate_access_admin_can_view_admin_users`: Verifies `admin` accesses `/admin/users` with password hash redaction.
-- `test_legitimate_access_admin_can_view_any_profile`: Verifies `admin` can audit member profiles.
-- `test_unauthenticated_requests_redirect_to_login`: Verifies anonymous requests to protected routes redirect to `/login`.
-- `test_account_lockout_after_five_failed_attempts`: Verifies account locks for 5 minutes after 5 bad attempts.
-- `test_successful_login_resets_failed_attempt_counter`: Verifies valid login clears failure counters.
-- `test_ip_rate_limiting_on_login`: Verifies Flask-Limiter returns `429 Too Many Requests` on rapid bursts.
+**Key Test Capabilities:**
+- SQL injection login bypass rejection across diverse payloads.
+- IDOR prevention and ownership verification on `/profile/<id>`.
+- Broken access control rejection on `/admin/users`.
+- CSRF token validation and missing token rejection (HTTP 400).
+- POST-only logout verification and GET `/logout` rejection (HTTP 405).
+- Anti-enumeration timing equalization and identical failure statuses.
+- DoS-resistant lockout per (username, IP) with exponential backoff.
+- Session idle timeouts and RFC 6265bis `__Host-` cookie prefixes.
+- Immediate access revocation upon user demotion or deletion.
+- Parametrized security headers and `Cache-Control: no-store` on authenticated views.
+- Structured audit logging verification via `caplog`.
+- Input validation and boundary length checks.
+- Exploit verification asserting the 3 vulnerabilities remain functional on `vulnerable/`.
 
 ### 2. Static Application Security Testing (Bandit)
 Run AST-based static vulnerability scanning against the hardened codebase:
 
 ```bash
-bandit -r secure/ -lll
+bandit -r secure/ -ll
 ```
-*Zero high-severity findings identified.*
+*Zero medium- or high-severity findings identified.*
 
-### 3. Proof-of-Concept Scripts (curl)
+### 3. Dependency Vulnerability Auditing (pip-audit)
+Scan the environment for known dependency CVEs:
+
+```bash
+pip-audit
+```
+*Zero known dependency vulnerabilities identified.*
+
+### 4. Proof-of-Concept Scripts (curl)
 Automated verification scripts are provided in [`poc/`](poc/):
 
 ```bash
@@ -174,20 +212,24 @@ chmod +x exploit_demo.sh verify_fix.sh
 
 ## DevSecOps & CI Pipeline
 
-Every pull request and push to `main` triggers the automated GitHub Actions workflow defined in [`.github/workflows/security-ci.yml`](.github/workflows/security-ci.yml):
+Every pull request and push triggers the automated GitHub Actions workflow defined in [`.github/workflows/security-ci.yml`](.github/workflows/security-ci.yml):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                       GitHub Actions CI                     │
 └──────────────────────────────┬──────────────────────────────┘
                                │
-            ┌──────────────────┴──────────────────┐
-            ▼                                     ▼
+             ┌─────────────────┴─────────────────┐
+             ▼                                   ▼
 ┌───────────────────────────────┐   ┌───────────────────────────────┐
-│     Automated Unit & SAST     │   │      Bandit Security Scan     │
-│   pytest -v --tb=short        │   │      bandit -r secure/ -lll   │
-│   (10/10 Tests Must Pass)     │   │   (0 High Findings Required)  │
-└───────────────────────────────┘   └───────────────────────────────┘
+│     Multi-Version Matrix      │   │       PoC Verification        │
+│   Python 3.10 / 3.11 / 3.12   │   │   Boots :5000 & :5001         │
+│   • Ruff Linter               │   │   • Runs exploit_demo.sh      │
+│   • Pytest --cov (>= 90%)     │   │   • Runs verify_fix.sh        │
+│   • Bandit SAST (-ll)         │   │   (Asserts HTTP status codes) │
+│   • pip-audit Vulnerability   │   └───────────────────────────────┘
+│   • Uploads Coverage Report   │
+└───────────────────────────────┘
 ```
 
 ---
@@ -199,46 +241,6 @@ Every pull request and push to `main` triggers the automated GitHub Actions work
 | [**Threat Model (STRIDE)**](docs/threat_model.md) | Exhaustive architectural threat model analyzing assets, actors, trust boundaries, and STRIDE mitigation mappings. |
 | [**Vulnerability Catalog**](docs/vulnerabilities.md) | Detailed vulnerability analysis covering root causes, attack vectors, impacts, and code-level fixes. |
 | [**Security Assessment Report**](docs/security_report.md) | Executive summary, methodology, verification results, completed hardening items, and residual risks. |
-
----
-
-## Security Hardening Architecture
-
-### Defense-in-Depth Implementation in `secure/app.py`:
-
-1. **Access Control Decorator**:
-   ```python
-   def admin_required(f):
-       @wraps(f)
-       def wrapper(*a, **kw):
-           if "user_id" not in session:
-               return redirect(url_for("login"))
-           if session.get("role") != "admin":
-               abort(403)
-           return f(*a, **kw)
-       return wrapper
-   ```
-2. **Horizontal IDOR Prevention**:
-   ```python
-   if session.get("role") != "admin" and session.get("user_id") != user_id:
-       abort(403)
-   ```
-3. **Account Lockout & Brute-Force Defense**:
-   ```python
-   if failed_attempts >= 5:
-       lock_until = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
-       db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?", ...)
-       return render_template("login.html", error="Account locked, try again later.")
-   ```
-4. **Hardened HTTP Response Headers**:
-   ```python
-   @app.after_request
-   def set_security_headers(resp):
-       resp.headers["X-Content-Type-Options"] = "nosniff"
-       resp.headers["X-Frame-Options"] = "DENY"
-       resp.headers["Content-Security-Policy"] = "default-src 'self'"
-       return resp
-   ```
 
 ---
 

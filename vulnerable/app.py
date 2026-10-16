@@ -3,8 +3,10 @@ VULNERABLE VERSION - College Club Portal
 Intentionally contains 3 vulnerabilities for security coursework.
 DO NOT deploy. Local/educational use only.
 """
-from flask import Flask, request, session, redirect, url_for, render_template, g
-import sqlite3, os
+import os
+import sqlite3
+
+from flask import Flask, g, redirect, render_template, request, session, url_for
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey123"  # also weak, but not a graded vuln

@@ -5,17 +5,26 @@ Fixes the vulnerabilities present in vulnerable/:
   2. SQL Injection on /login      -> parameterized queries
   3. Broken access control /admin -> server-side role check (decorator)
 """
-from flask import Flask, request, session, redirect, url_for, render_template, g, abort, current_app
-from functools import wraps
+import logging
+import os
+import sys
 from datetime import datetime, timedelta, timezone
-import sqlite3, os
-from werkzeug.security import check_password_hash, generate_password_hash
+from functools import wraps
+
+# Ensure project root is in sys.path when running secure/app.py standalone
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from flask import Flask, abort, g, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from secure.config import Config, TestingConfig
-from secure.db import get_db, close_db, init_db, DB_FALLBACK as DB
+from secure.db import DB_FALLBACK as DB
+from secure.db import close_db, ensure_schema, get_db, init_db
+
+audit_logger = logging.getLogger("secure.audit")
 
 DUMMY_PASSWORD_HASH = generate_password_hash("timing_equalization_secret")
 
@@ -33,6 +42,13 @@ def login_required(f):
     def wrapper(*a, **kw):
         if "user_id" not in session:
             return redirect(url_for("login"))
+        db = get_db()
+        user = db.execute("SELECT id, username, role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        if not user:
+            session.clear()
+            return redirect(url_for("login"))
+        session["role"] = user["role"]
+        g.user = user
         return f(*a, **kw)
     return wrapper
 
@@ -42,7 +58,14 @@ def admin_required(f):
     def wrapper(*a, **kw):
         if "user_id" not in session:
             return redirect(url_for("login"))
-        if session.get("role") != "admin":
+        db = get_db()
+        user = db.execute("SELECT id, username, role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        if not user:
+            session.clear()
+            return redirect(url_for("login"))
+        session["role"] = user["role"]
+        g.user = user
+        if user["role"] != "admin":
             abort(403)
         return f(*a, **kw)
     return wrapper
@@ -71,14 +94,42 @@ def create_app(config=None):
     limiter.init_app(app)
     app.teardown_appcontext(close_db)
 
+    db_path = app.config.get("DATABASE", DB)
+    if os.path.exists(db_path):
+        with app.app_context():
+            ensure_schema(get_db())
+
+    @app.before_request
+    def check_idle_timeout():
+        if "user_id" in session:
+            now = datetime.now(timezone.utc).timestamp()
+            last_active = session.get("_last_active")
+            max_idle = app.permanent_session_lifetime.total_seconds()
+            if last_active and (now - last_active > max_idle):
+                session.clear()
+                if request.endpoint and request.endpoint not in ("login", "static"):
+                    return redirect(url_for("login"))
+            else:
+                session["_last_active"] = now
+
     # ---------- FIX #2: parameterized query + hashed password check ----------
     # BONUS: Rate limiting on login attempts (5 per minute per IP)
     @app.route("/login", methods=["GET", "POST"])
     @limiter.limit("5 per minute", methods=["POST"])
     def login():
         if request.method == "POST":
-            username = request.form["username"]
-            password = request.form["password"]
+            username = request.form.get("username")
+            password = request.form.get("password")
+
+            if username is None or password is None:
+                return render_template("login.html", error="Username and password are required"), 400
+
+            if not isinstance(username, str) or not isinstance(password, str):
+                return render_template("login.html", error="Invalid input type"), 400
+
+            if not (1 <= len(username) <= 64) or not (1 <= len(password) <= 128):
+                return render_template("login.html", error="Invalid input length"), 400
+
             ip_addr = request.remote_addr or "127.0.0.1"
             db = get_db()
             user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
@@ -112,8 +163,17 @@ def create_app(config=None):
                                    (attempt_row["id"],))
                         db.commit()
                     session.clear()
+                    session.permanent = True
                     session["user_id"] = user["id"]
                     session["role"] = user["role"]
+                    session["username"] = user["username"]
+                    session["_last_active"] = datetime.now(timezone.utc).timestamp()
+                    audit_logger.info(
+                        "SECURITY AUDIT: event=login_success username=%s user_id=%s ip=%s",
+                        user["username"],
+                        user["id"],
+                        ip_addr,
+                    )
                     return redirect(url_for("dashboard"))
                 else:
                     failed = ((attempt_row["failed_attempts"] if attempt_row else 0) or 0) + 1
@@ -129,6 +189,7 @@ def create_app(config=None):
                                 "VALUES (?, ?, ?, ?)",
                                 (username, ip_addr, failed, lock_until)
                             )
+                        audit_logger.warning("SECURITY AUDIT: event=lockout username=%s ip=%s", username, ip_addr)
                     else:
                         if attempt_row:
                             db.execute("UPDATE login_attempts SET failed_attempts = ? WHERE id = ?",
@@ -138,18 +199,25 @@ def create_app(config=None):
                                 "INSERT INTO login_attempts (username, ip_address, failed_attempts) VALUES (?, ?, ?)",
                                 (username, ip_addr, failed)
                             )
+                        audit_logger.warning("SECURITY AUDIT: event=login_failure username=%s ip=%s", username, ip_addr)
                     db.commit()
                     return render_template("login.html", error="Invalid credentials")
             elif user and is_locked:
                 check_password_hash(user["password"], password)
+                audit_logger.warning("SECURITY AUDIT: event=lockout username=%s ip=%s", username, ip_addr)
                 return render_template("login.html", error="Invalid credentials")
             else:
                 check_password_hash(DUMMY_PASSWORD_HASH, password)
+                audit_logger.warning("SECURITY AUDIT: event=login_failure username=%s ip=%s", username, ip_addr)
                 return render_template("login.html", error="Invalid credentials")
         return render_template("login.html")
 
-    @app.route("/logout")
+    @app.route("/logout", methods=["POST"])
     def logout():
+        user_id = session.get("user_id")
+        username = session.get("username")
+        ip_addr = request.remote_addr or "127.0.0.1"
+        audit_logger.info("SECURITY AUDIT: event=logout username=%s user_id=%s ip=%s", username, user_id, ip_addr)
         session.clear()
         return redirect(url_for("login"))
 
@@ -183,18 +251,35 @@ def create_app(config=None):
 
     @app.errorhandler(403)
     def forbidden(e):
+        user_id = session.get("user_id")
+        ip_addr = request.remote_addr or "127.0.0.1"
+        audit_logger.warning(
+            "SECURITY AUDIT: event=403_forbidden user_id=%s path=%s ip=%s",
+            user_id,
+            request.path,
+            ip_addr,
+        )
         return render_template("403.html"), 403
 
     @app.errorhandler(429)
     def ratelimit_handler(e):
         return render_template("login.html", error="Too many requests. Rate limit exceeded, try again later."), 429
 
-    # ---------- Bonus hardening ----------
+    # ---------- Bonus hardening: Security Headers ----------
     @app.after_request
     def set_security_headers(resp):
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Content-Security-Policy"] = "default-src 'self'"
+        resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        resp.headers["Content-Security-Policy"] = (
+            "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
+        if "user_id" in session:
+            resp.headers["Cache-Control"] = "no-store"
+            resp.headers["Pragma"] = "no-cache"
         return resp
 
     return app
