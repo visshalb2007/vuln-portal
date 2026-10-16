@@ -7,8 +7,12 @@ Fixes the vulnerabilities present in vulnerable/:
 """
 import logging
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+
+# Ensure project root is in sys.path when running secure/app.py standalone
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
@@ -18,7 +22,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from secure.config import Config, TestingConfig
 from secure.db import DB_FALLBACK as DB
-from secure.db import close_db, get_db, init_db
+from secure.db import close_db, ensure_schema, get_db, init_db
 
 audit_logger = logging.getLogger("secure.audit")
 
@@ -89,6 +93,11 @@ def create_app(config=None):
     csrf.init_app(app)
     limiter.init_app(app)
     app.teardown_appcontext(close_db)
+
+    db_path = app.config.get("DATABASE", DB)
+    if os.path.exists(db_path):
+        with app.app_context():
+            ensure_schema(get_db())
 
     @app.before_request
     def check_idle_timeout():
