@@ -60,3 +60,59 @@ jobs:
           name: coverage-report-py311
           path: coverage.xml
           retention-days: 14
+
+  poc-verification:
+    name: PoC Exploit & Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Start Vulnerable App (:5000)
+        run: |
+          python vulnerable/app.py &
+          for i in {1..10}; do
+            if curl -s http://127.0.0.1:5000/login > /dev/null; then
+              echo "Vulnerable app is up!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Exploit Demonstration Script
+        run: |
+          chmod +x poc/exploit_demo.sh
+          ./poc/exploit_demo.sh
+
+      - name: Start Secure App (:5001)
+        env:
+          SECRET_KEY: "ci-secret-key-at-least-32-bytes-long!"
+          SEED_ADMIN_PASSWORD: "admin123"
+          SEED_ALICE_PASSWORD: "alicepw"
+          SEED_BOB_PASSWORD: "bobpw"
+          SESSION_COOKIE_SECURE: "false"
+        run: |
+          python secure/app.py &
+          for i in {1..10}; do
+            if curl -s http://127.0.0.1:5001/login > /dev/null; then
+              echo "Secure app is up!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Fix Verification Script
+        run: |
+          chmod +x poc/verify_fix.sh
+          ./poc/verify_fix.sh
