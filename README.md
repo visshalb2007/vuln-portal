@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="1617" height="405" alt="image" src="https://github.com/user-attachments/assets/a6b680e7-87f1-402b-b633-6c25c14e6a7a" />
+<img width="712" height="212" alt="image" src="https://github.com/user-attachments/assets/95e7dbde-e4a4-4939-aeaf-ec899a55b65a" />
 
 **A Full-Spectrum Cyber Defense Benchmarking Environment & Dual-State Vulnerability Lab**
 
