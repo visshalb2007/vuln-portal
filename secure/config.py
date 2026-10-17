@@ -1,6 +1,33 @@
 import os
 from datetime import timedelta
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _load_dotenv(path=None):
+    """Minimal, dependency-free .env loader.
+
+    Loads KEY=VALUE pairs from the project-root ``.env`` file into os.environ
+    without overwriting variables that are already set. This is a local
+    convenience only; production should inject real environment variables.
+    """
+    path = path or os.path.join(_PROJECT_ROOT, ".env")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, value)
+
+
+_load_dotenv()
+
 
 class Config:
     TESTING = False

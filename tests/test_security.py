@@ -256,6 +256,12 @@ def test_seed_passwords_not_hardcoded(monkeypatch):
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("ALICE_PASSWORD", raising=False)
     monkeypatch.delenv("BOB_PASSWORD", raising=False)
+    # secure/config.py also loads a local .env, which may set the SEED_* names.
+    # Clear those too so the assertion is hermetic regardless of the developer's
+    # local environment (e.g. a local .env with deterministic dev credentials).
+    monkeypatch.delenv("SEED_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("SEED_ALICE_PASSWORD", raising=False)
+    monkeypatch.delenv("SEED_BOB_PASSWORD", raising=False)
 
     passwords = get_seed_passwords()
     assert len(passwords["admin"]) >= 16
